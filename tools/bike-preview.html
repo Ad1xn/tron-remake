@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Bike-Vorschau</title>
+  <!-- Kleine Werkbank: zeigt das Lightcycle-Modell aus src/render3d.js
+       gross und drehbar. Zum Schrauben am Modell, ohne jedes Mal eine
+       Runde spielen zu müssen.  →  http://localhost:8123/tools/bike-preview.html -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <style>
+    html, body { margin: 0; height: 100%; background: #04060f; overflow: hidden; }
+    canvas { display: block; width: 100%; height: 100%; }
+    p { position: fixed; left: 14px; bottom: 12px; margin: 0;
+        color: #7f93c9; font: 700 12px/1.5 Nunito, system-ui, sans-serif; }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <p>Maus ziehen = drehen &nbsp;·&nbsp; Rad = Zoom &nbsp;·&nbsp; Zahl 1–4 = Farbe</p>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+    import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+    import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+    import { buildBike } from "../src/render3d.js";
+    import { ROSTER } from "../src/config.js";
+
+    const canvas = document.getElementById("c");
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setClearColor(0x04060f, 1);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+    camera.position.set(2.4, 1.5, 2.6);
+
+    scene.add(new THREE.HemisphereLight(0x4466ff, 0x05070f, 0.6));
+    const key = new THREE.DirectionalLight(0x9fd0ff, 0.6);
+    key.position.set(4, 8, 6);
+    scene.add(key);
+
+    // Boden mit Gitter, damit man die Grösse eines Kästchens sieht:
+    // ein Bike soll in EIN Kästchen passen.
+    const grid = new THREE.GridHelper(8, 8, 0x14224a, 0x14224a);
+    grid.material.transparent = true;
+    grid.material.opacity = 0.6;
+    scene.add(grid);
+
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.7, 0.6, 0.2));
+
+    const controls = new OrbitControls(camera, canvas);
+    controls.target.set(0, 0.4, 0);
+
+    let model = null;
+    function show(colorHex) {
+      if (model) scene.remove(model.yaw);
+      model = buildBike(colorHex);
+      scene.add(model.yaw);
+    }
+    show(ROSTER[0].color);
+
+    addEventListener("keydown", (e) => {
+      const n = Number(e.key);
+      if (n >= 1 && n <= ROSTER.length) show(ROSTER[n - 1].color);
+    });
+
+    function resize() {
+      const w = canvas.clientWidth, h = canvas.clientHeight;
+      renderer.setSize(w, h, false);
+      composer.setSize(w, h);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
+    addEventListener("resize", resize);
+    resize();
+
+    (function loop() {
+      controls.update();
+      composer.render();
+      requestAnimationFrame(loop);
+    })();
+  </script>
+</body>
+</html>
