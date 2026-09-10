@@ -3,37 +3,110 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Tron Remake</title>
+  <title>TRON — Lightcycles</title>
+
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap">
   <link rel="stylesheet" href="style.css">
+
+  <!-- Eine "importmap" sagt dem Browser, wo der nackte Name "three"
+       herkommt. Dadurch stehen in den src/-Dateien schöne kurze
+       Importe statt langer URLs — und es bleibt beim Bauen-ohne-Build:
+       kein npm, kein Bundler. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
 </head>
 <body>
 
-  <!-- Die Kopfzeile: zeigt an, wer noch lebt -->
-  <header>
-    <h1>TRON</h1>
-    <div id="hud"></div>
+  <!-- ========== Kopfzeile: Punktestand, Runde, wer lebt ========== -->
+  <header class="hudbar">
+    <div class="chip">
+      <span class="label">SCORE</span>
+      <span class="value gold" id="score-value">0</span>
+    </div>
+
+    <div class="middle">
+      <div class="chip">
+        <span class="label">SPEED</span>
+        <span class="value" id="speed-value">30</span>
+      </div>
+      <!-- Ein Punkt pro Fahrer, in seiner Farbe. Geht aus, wenn er raus ist. -->
+      <div class="dots" id="rider-dots"></div>
+    </div>
+
+    <div class="chip">
+      <span class="label">BEST</span>
+      <span class="value gold" id="best-value">0</span>
+    </div>
   </header>
 
-  <!-- Das Spielfeld. Ein <canvas> ist eine leere Zeichenfläche,
-       auf die wir mit JavaScript malen. -->
+  <!-- ========== Die Arena ========== -->
   <div class="stage">
     <canvas id="board"></canvas>
 
-    <!-- Diese Box legt sich über das Spielfeld, wenn die Runde vorbei ist.
-         "hidden" heisst: gerade unsichtbar. -->
     <div id="overlay" class="overlay">
-      <p id="overlay-title">TRON</p>
-      <p id="overlay-text">Pfeiltasten oder WASD zum Fahren</p>
-      <p class="hint">LEERTASTE = Start / Neustart</p>
+      <p class="title" id="overlay-title">TRON</p>
+      <p class="text"  id="overlay-text">Lightcycles, dünne Wände, kein Rückwärtsgang.</p>
+      <p class="hint"  id="overlay-hint">LEERTASTE = Start</p>
+    </div>
+
+    <div id="offline" class="overlay hidden">
+      <p class="title">KEINE VERBINDUNG</p>
+      <p class="text">Three.js kommt von einem CDN und ist nicht erreichbar.</p>
+      <p class="hint">Die alte 2D-Version liegt in legacy/game2d.js</p>
     </div>
   </div>
 
+  <!-- ========== Die drei Werte, die man beim Fahren liest ========== -->
+  <div class="meters">
+    <div class="meter">
+      <span class="name">RUBBER</span>
+      <span class="track"><i class="fill" id="rubber-bar" style="width:100%"></i></span>
+      <span class="num" id="rubber-value">0.0</span>
+    </div>
+    <div class="meter">
+      <span class="name">SPEED</span>
+      <span class="track"><i class="fill" id="speed-bar" style="width:20%"></i></span>
+      <span class="num"><span id="speed-value">30</span></span>
+    </div>
+    <div class="meter">
+      <span class="name">BRAKES</span>
+      <span class="track"><i class="fill" id="brake-bar" style="width:100%"></i></span>
+      <span class="num">&nbsp;</span>
+    </div>
+  </div>
+
+  <!-- ========== Fahrerliste + Steuerung ========== -->
   <footer>
-    <span>Steuerung: Pfeiltasten / WASD</span>
-    <span>Neustart: Leertaste</span>
+    <div class="roster" id="roster"></div>
+    <div class="keys">
+      <span><b>← →</b> drehen</span>
+      <span><b>↓</b> bremsen</span>
+      <span><b>Leertaste</b> Start &amp; weiter</span>
+      <span><b>C</b> Kamera</span>
+      <span><b>F</b> zuschauen</span>
+      <span><b>V</b> KI übernimmt</span>
+      <span><b>R</b> Neustart</span>
+    </div>
   </footer>
 
-  <!-- Unser Programm. Ganz am Ende laden, damit HTML schon existiert. -->
-  <script src="game.js"></script>
+  <script type="module" src="src/main.js"></script>
+
+  <script>
+    window.addEventListener("error", (e) => {
+      const scriptFehlt = e.target && e.target.tagName === "SCRIPT";
+      if (scriptFehlt || e.message?.includes("import")) {
+        document.getElementById("offline")?.classList.remove("hidden");
+        document.getElementById("overlay")?.classList.add("hidden");
+      }
+    }, true);
+  </script>
 </body>
 </html>

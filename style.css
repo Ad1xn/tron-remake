@@ -1,98 +1,308 @@
-/* ---------------------------------------------------------
-   CSS = wie es aussieht. HTML = was da ist. JS = was passiert.
-   --------------------------------------------------------- */
+/* =========================================================================
+   Optik der Seite um das Spielfeld herum.
+   Vorbild ist ein Arcade-Automat: dunkler Raum, runde Kacheln,
+   fette Zahlen, alles leuchtet ein bisschen.
+   ========================================================================= */
 
-/* Variablen: einmal definieren, überall benutzen. */
 :root {
-  --bg: #05070d;
-  --grid: #0d1a2b;
-  --cyan: #22d3ee;
-  --orange: #fb923c;
-  --text: #cbd5e1;
+  --bg:        #04060f;
+  --ink:       #dce6ff;
+  --muted:     #7f93c9;
+  --gold:      #ffd447;
+  --neon:      #2440ff;
+  --chip-bg:   rgba(10, 18, 48, 0.82);
+  --chip-line: rgba(76, 120, 255, 0.55);
 }
 
 * { box-sizing: border-box; }
 
-body {
+html, body {
+  height: 100%;
   margin: 0;
-  min-height: 100vh;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(120% 80% at 50% 0%, #0b1330 0%, transparent 60%),
+    var(--bg);
+  color: var(--ink);
+  font-family: Nunito, "Trebuchet MS", system-ui, sans-serif;
+  font-weight: 800;
+  overflow: hidden;
+}
+
+
+/* ---------------- Kopfzeile ---------------- */
+.hudbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px 6px;
+}
+
+.chip {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 16px;
-  background: radial-gradient(circle at 50% 0%, #0b1220, var(--bg) 70%);
-  color: var(--text);
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  gap: 2px;
+  min-width: 96px;
+  padding: 7px 16px 9px;
+  border: 2px solid var(--chip-line);
+  border-radius: 16px;
+  background: var(--chip-bg);
+  box-shadow: 0 0 18px rgba(36, 64, 255, 0.35),
+              inset 0 0 12px rgba(36, 64, 255, 0.18);
 }
 
-header {
+.chip .label {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+}
+
+.chip .value {
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 14px currentColor;
+}
+
+.chip .value.gold { color: var(--gold); }
+
+.middle {
   display: flex;
-  align-items: baseline;
-  gap: 24px;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
 }
 
-h1 {
-  margin: 0;
-  font-size: 28px;
-  letter-spacing: 12px;
-  color: var(--cyan);
-  text-shadow: 0 0 18px var(--cyan);
+/* Die Punkte-Reihe unter dem Level: einer pro Fahrer. */
+.dots { display: flex; gap: 7px; }
+
+.dots .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--c);
+  box-shadow: 0 0 10px var(--c);
+  transition: opacity 0.25s, transform 0.25s;
 }
 
-#hud {
-  display: flex;
-  gap: 18px;
-  font-size: 13px;
+.dots .dot.dead {
+  opacity: 0.22;
+  transform: scale(0.7);
+  box-shadow: none;
 }
 
-/* Ein "Chip" pro Fahrer im HUD */
-.chip {
-  padding: 4px 10px;
-  border: 1px solid currentColor;
-  border-radius: 999px;
+
+/* ---------------- Spielfeld ---------------- */
+.stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
 }
-.chip.dead { opacity: 0.35; text-decoration: line-through; }
 
-/* "position: relative" auf dem Eltern-Element, damit das Overlay
-   sich absolut DARIN positionieren kann. */
-.stage { position: relative; }
-
-canvas {
+#board {
   display: block;
-  border: 1px solid #1e293b;
-  border-radius: 6px;
-  box-shadow: 0 0 60px rgba(34, 211, 238, 0.12);
+  width: 100%;
+  height: 100%;
 }
 
+/* Sanft dunkle Ecken — lässt das Neon in der Mitte kräftiger wirken. */
+.stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(70% 60% at 50% 45%, transparent 55%, rgba(2, 4, 12, 0.85) 100%);
+}
+
+
+/* ---------------- Overlay ---------------- */
 .overlay {
   position: absolute;
-  inset: 0;                     /* oben/rechts/unten/links = 0 → füllt alles */
+  inset: 0;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  background: rgba(5, 7, 13, 0.82);
-  backdrop-filter: blur(2px);
-  border-radius: 6px;
+  gap: 10px;
   text-align: center;
+  background: radial-gradient(50% 40% at 50% 50%, rgba(4, 7, 20, 0.88), rgba(4, 7, 20, 0.5));
+  transition: opacity 0.2s;
 }
-.overlay.hidden { display: none; }
 
-#overlay-title {
+.overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.overlay .title {
   margin: 0;
-  font-size: 34px;
-  letter-spacing: 6px;
-  color: var(--cyan);
-  text-shadow: 0 0 20px currentColor;
+  font-size: clamp(30px, 6vw, 62px);
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  color: #7fe9ff;
+  text-shadow: 0 0 26px rgba(60, 200, 255, 0.85);
 }
-#overlay-text { margin: 0; font-size: 14px; }
-.hint { margin: 10px 0 0; font-size: 12px; opacity: 0.55; }
 
+.overlay .text {
+  margin: 0;
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.overlay .hint {
+  margin: 6px 0 0;
+  padding: 7px 16px;
+  border: 2px solid var(--chip-line);
+  border-radius: 999px;
+  background: var(--chip-bg);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  color: var(--gold);
+}
+
+
+/* ---------------- Fusszeile ---------------- */
 footer {
   display: flex;
-  gap: 24px;
-  font-size: 12px;
-  opacity: 0.45;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 24px;
+  padding: 8px 22px 14px;
 }
+
+.roster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rider {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border: 1.5px solid color-mix(in srgb, var(--c) 55%, transparent);
+  border-radius: 999px;
+  background: rgba(8, 14, 36, 0.75);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--c);
+  transition: opacity 0.3s;
+}
+
+.rider .pip {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c);
+  box-shadow: 0 0 9px var(--c);
+}
+
+.rider em {
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.rider.dead { opacity: 0.4; }
+.rider.dead .pip { box-shadow: none; }
+
+.keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.keys b {
+  color: var(--ink);
+  font-weight: 900;
+}
+
+
+/* =========================================================================
+   MESSER — Rubber, Speed, Brakes
+   =========================================================================
+   Vorbild ist die Leiste unten im Original: drei Werte, die man im
+   Augenwinkel liest, während man fährt. Darum breit, flach und ohne
+   Schnörkel — und Rubber zuerst, weil daran das Leben hängt.
+   ========================================================================= */
+.meters {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px 2px;
+  flex-wrap: wrap;
+}
+
+.meter {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 190px;
+}
+
+.meter .name {
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  min-width: 62px;
+}
+
+.meter .track {
+  position: relative;
+  flex: 1;
+  height: 9px;
+  border-radius: 99px;
+  background: rgba(10, 18, 48, 0.9);
+  border: 1px solid var(--chip-line);
+  overflow: hidden;
+}
+
+.meter .fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 99px;
+  background: var(--c, #4c78ff);
+  box-shadow: 0 0 12px var(--c, #4c78ff);
+  transition: width 60ms linear;
+}
+
+.meter .num {
+  font-size: 0.82rem;
+  min-width: 42px;
+  text-align: right;
+  color: var(--ink);
+}
+
+/* Rubber: läuft von blau nach rot, und flackert, wenn es knapp wird. */
+#rubber-bar { --c: #22d3ee; }
+#rubber-bar.low {
+  --c: #ff2d55;
+  animation: pulse 0.42s steps(2, end) infinite;
+}
+@keyframes pulse { 50% { opacity: 0.45; } }
+
+#speed-bar { --c: #ffd447; }
+#speed-bar.fast { --c: #ff8a3d; }
+
+#brake-bar { --c: #a855f7; }
+#brake-bar.using { --c: #fb923c; }
