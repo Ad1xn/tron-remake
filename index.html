@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tron Remake</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Die Kopfzeile: zeigt an, wer noch lebt -->
+  <header>
+    <h1>TRON</h1>
+    <div id="hud"></div>
+  </header>
+
+  <!-- Das Spielfeld. Ein <canvas> ist eine leere Zeichenfläche,
+       auf die wir mit JavaScript malen. -->
+  <div class="stage">
+    <canvas id="board"></canvas>
+
+    <!-- Diese Box legt sich über das Spielfeld, wenn die Runde vorbei ist.
+         "hidden" heisst: gerade unsichtbar. -->
+    <div id="overlay" class="overlay">
+      <p id="overlay-title">TRON</p>
+      <p id="overlay-text">Pfeiltasten oder WASD zum Fahren</p>
+      <p class="hint">LEERTASTE = Start / Neustart</p>
+    </div>
+  </div>
+
+  <footer>
+    <span>Steuerung: Pfeiltasten / WASD</span>
+    <span>Neustart: Leertaste</span>
+  </footer>
+
+  <!-- Unser Programm. Ganz am Ende laden, damit HTML schon existiert. -->
+  <script src="game.js"></script>
+</body>
+</html>

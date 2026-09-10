@@ -1,0 +1,98 @@
+/* ---------------------------------------------------------
+   CSS = wie es aussieht. HTML = was da ist. JS = was passiert.
+   --------------------------------------------------------- */
+
+/* Variablen: einmal definieren, überall benutzen. */
+:root {
+  --bg: #05070d;
+  --grid: #0d1a2b;
+  --cyan: #22d3ee;
+  --orange: #fb923c;
+  --text: #cbd5e1;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: radial-gradient(circle at 50% 0%, #0b1220, var(--bg) 70%);
+  color: var(--text);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  gap: 24px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 28px;
+  letter-spacing: 12px;
+  color: var(--cyan);
+  text-shadow: 0 0 18px var(--cyan);
+}
+
+#hud {
+  display: flex;
+  gap: 18px;
+  font-size: 13px;
+}
+
+/* Ein "Chip" pro Fahrer im HUD */
+.chip {
+  padding: 4px 10px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+}
+.chip.dead { opacity: 0.35; text-decoration: line-through; }
+
+/* "position: relative" auf dem Eltern-Element, damit das Overlay
+   sich absolut DARIN positionieren kann. */
+.stage { position: relative; }
+
+canvas {
+  display: block;
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  box-shadow: 0 0 60px rgba(34, 211, 238, 0.12);
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;                     /* oben/rechts/unten/links = 0 → füllt alles */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: rgba(5, 7, 13, 0.82);
+  backdrop-filter: blur(2px);
+  border-radius: 6px;
+  text-align: center;
+}
+.overlay.hidden { display: none; }
+
+#overlay-title {
+  margin: 0;
+  font-size: 34px;
+  letter-spacing: 6px;
+  color: var(--cyan);
+  text-shadow: 0 0 20px currentColor;
+}
+#overlay-text { margin: 0; font-size: 14px; }
+.hint { margin: 10px 0 0; font-size: 12px; opacity: 0.55; }
+
+footer {
+  display: flex;
+  gap: 24px;
+  font-size: 12px;
+  opacity: 0.45;
+}
