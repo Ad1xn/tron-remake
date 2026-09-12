@@ -368,8 +368,50 @@ export const REWARD = {
   ZEIT:  0.002,
   KILL:  1.0,
   TOD:  -1.0,
-  SIEG:  1.0,
+  SIEG: 10.0,
 };
+
+/* WARUM SIEG SO VIEL GRÖSSER IST ALS DER REST
+   =========================================================================
+   Mit SIEG 1,0 war diese Formel über den Ausgang einer Runde praktisch
+   uninformiert. Gemessen an 24 Matches mit den vier Bots (jeder Satz auf
+   DENSELBEN Matches abgerechnet, die Bots hängen ja nicht an der
+   Belohnung):
+
+     Hatte der Sieger die höchste Summe?      SIEG 1,0 →  7/24 = 29 %
+                                              SIEG 10  → 18/24 = 75 %
+     (Zufall wäre 25 %.)
+
+   Noch deutlicher an der Rangfolge. Sortiert man die vier Bots nach
+   mittlerem Lohn, ergab SIEG 1,0
+
+       cruiser > grinder > hunter > rookie
+
+   während die tatsächliche Siegreihenfolge
+
+       hunter (13 Siege) > cruiser (7) > grinder (2) > rookie (0)
+
+   ist. Die Belohnung setzte grinder mit 2 Siegen ÜBER hunter mit 13 —
+   ein Netz, das sie maximiert, lernt zu grinden, nicht zu gewinnen. Mit
+   SIEG 10 stimmen Lohn- und Siegreihenfolge überein.
+
+   Der Grund ist ein Grössenvergleich, den man leicht übersieht: LEBEN
+   minus ZEIT ist ein NETTO-Plus von 0,002 pro Agenten-Schritt, bei
+   31,25 Hz also 0,0625 pro Sekunde. Eine Runde von 60 s trägt damit
+   rund 3,8 ein — bei SIEG 1,0 war Herumfahren fast viermal so viel wert
+   wie Gewinnen. LEBEN und ZEIT sollen gegeneinander ziehen, aber sie
+   sind kein Ziel, sondern Anschub für ein frisches Netz.
+
+   NOCH OFFEN, bewusst nicht geändert: TEMPO auf 0,025 zu halbieren hebt
+   die Trefferquote auf 21/24 = 88 %. Das ist aber kein Fehler mehr,
+   sondern eine Entscheidung — TEMPO ist der Term, der das Grinden
+   beibringt, und das ist der Kern des Spiels. Wer ihn halbiert, bekommt
+   ein braveres Netz.
+
+   UND EINE GRENZE: gemessen ist das gegen vier handgeschriebene Bots.
+   Dass die Belohnung deren Können richtig ordnet, heisst nicht, dass ein
+   Netz sie nicht doch aushebelt. Darum gibt es index.html?replay.
+   ========================================================================= */
 
 /* Vor dem Schritt aufnehmen … */
 export function rewardSnapshot(view) {
