@@ -255,30 +255,56 @@ function loop(now) {
    ------------------------------------------------------------------ */
 window.addEventListener("resize", () => view.resize());
 
-newRound({ resetScore: true });
-hud.show("TRON",
-  "<b>← →</b> drehen um 90°, <b>↓</b> bremst.<br>"
-  + "Dicht an einer SPIELERWAND wirst du schneller — die Aussenmauer "
-  + "schiebt nicht. Wer in eine Wand fährt, stirbt nicht sofort, sondern "
-  + "verbraucht <b>Gummi</b>: nur " + RULES.RUBBER + " Meter, und jede Kurve "
-  + "kostet extra.<br>"
-  + "Nach " + RULES.WIN_ZONE_DELAY + " s erscheint die <b>Win-Zone</b> — "
-  + "wer hineinfährt, gewinnt.",
-  "LEERTASTE = Start");
-requestAnimationFrame(loop);
+/* ZWEI BETRIEBSARTEN, EINE SEITE.
+   Mit ?replay in der Adresse wird aus derselben Seite der Zuschauerraum
+   für aufgezeichnete Matches — gleicher Renderer, gleiches Cockpit, nur
+   kommen die Fahrer vom Band statt aus agents.js:
 
-/* Für die Konsole:
-     TRON.mode("fortress")
-     TRON.players(8)
-     TRON.game.cycles[1].driver = { type:"agent", agent:"hunter" }   */
-window.TRON = {
-  get game() { return game; },
-  get phase() { return phase; },
-  get view() { return view; },
-  agents: AGENTS,
-  makeRemoteAgent,
-  tickOnce: () => { if (game.phase === "running") doTick(); },
-  restart: () => HOTKEYS.KeyR(),
-  mode: (m) => { mode = m; HOTKEYS.KeyR(); },
-  players: (n) => { players = Math.max(2, Math.min(16, n | 0)); HOTKEYS.KeyR(); },
-};
+       index.html?replay                 → out/replays
+       index.html?replay=pfad/zum/ordner → dieser Ordner
+
+   Vorher war das eine zweite Seite (arena.html) mit einer zweiten Kopie
+   des Cockpit-Markups. Die ist beim Umbau von hud.js und style.css
+   stillschweigend kaputtgegangen, weil niemand zwei Kopien gleichzeitig
+   pflegt. Darum jetzt hier. */
+const replayDir = new URLSearchParams(location.search).get("replay");
+
+if (replayDir !== null) {
+  const { startPlayback } = await import("./playback.js");
+  window.TRON = startPlayback(replayDir || "out/replays", { view, hud });
+
+} else {
+  newRound({ resetScore: true });
+  hud.show("TRON",
+    "<b>← →</b> drehen um 90°, <b>↓</b> bremst.<br>"
+    + "Dicht an einer SPIELERWAND wirst du schneller — die Aussenmauer "
+    + "schiebt nicht. Wer in eine Wand fährt, stirbt nicht sofort, sondern "
+    + "verbraucht <b>Gummi</b>: nur " + RULES.RUBBER + " Meter, und jede Kurve "
+    + "kostet extra.<br>"
+    /* Die Win-Zone ist ein PATT-BRECHER, kein Ziel — zwei Bedingungen,
+       nicht eine. Hier stand vorher eine einzelne Zeitangabe, und die
+       kam aus einem Schlüssel, den es nicht mehr gibt: die Meldung
+       zeigte wörtlich "Nach undefined s". */
+    + "Zieht sich die Runde über <b>" + MODES[mode].winZone.round + " s</b> hin "
+    + "UND ist <b>" + MODES[mode].winZone.lastDeath + " s</b> lang niemand "
+    + "gestorben, erscheint die <b>Win-Zone</b> und wächst — wer sie "
+    + "berührt, gewinnt.",
+    "LEERTASTE = Start");
+  requestAnimationFrame(loop);
+
+  /* Für die Konsole:
+       TRON.mode("fortress")
+       TRON.players(8)
+       TRON.game.cycles[1].driver = { type:"agent", agent:"hunter" }   */
+  window.TRON = {
+    get game() { return game; },
+    get phase() { return phase; },
+    get view() { return view; },
+    agents: AGENTS,
+    makeRemoteAgent,
+    tickOnce: () => { if (game.phase === "running") doTick(); },
+    restart: () => HOTKEYS.KeyR(),
+    mode: (m) => { mode = m; HOTKEYS.KeyR(); },
+    players: (n) => { players = Math.max(2, Math.min(16, n | 0)); HOTKEYS.KeyR(); },
+  };
+}

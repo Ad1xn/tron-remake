@@ -17,7 +17,7 @@
      node tools/selfplay.mjs --agents grinder,hunter
      node tools/selfplay.mjs --players 3                 1v1v1 (Feld wächst mit)
      node tools/selfplay.mjs --matrix                    jeder gegen jeden, 1v1
-     node tools/selfplay.mjs --replays out/replays       Bänder für arena.html
+     node tools/selfplay.mjs --replays out/replays       Bänder für index.html?replay
      node tools/selfplay.mjs --jsonl daten/spiele.jsonl  Zug für Zug zum Lernen
      node tools/selfplay.mjs --help
 
@@ -33,7 +33,7 @@
 
    AUFNEHMEN — zwei Sorten, die man nicht verwechseln darf
      --replays <ordner> BÄNDER zum Anschauen: winzig, weil nur seed +
-                        Richtungen. Dazu eine index.json für arena.html.
+                        Richtungen. Dazu eine index.json für index.html?replay.
      --replaysN <zahl>  wie viele Bänder pro Paarung (Standard 20)
      --jsonl <datei>    TRAININGSDATEN: pro Zug eine Zeile
                         { match, tick, agent, obs, action }. Das ist das
@@ -63,7 +63,7 @@ import { arenaFor, RULES } from "../src/config.js";
 const COLORS = [0x22d3ee, 0xfb923c, 0xa855f7, 0x4ade80, 0xf472b6, 0xfacc15];
 
 /* Alle geschriebenen Bänder, für das Inhaltsverzeichnis am Ende. Ein
-   statischer Webserver kann keinen Ordner auflisten — arena.html liest
+   statischer Webserver kann keinen Ordner auflisten — index.html?replay liest
    deshalb diese index.json. */
 const WRITTEN = [];
 
@@ -75,7 +75,7 @@ function parseArgs(argv) {
   const out = {
     n: 200, agents: ["cruiser", "grinder"], players: 0, seed: 1, level: 1,
     field: 0, maxTicks: 20000, matrix: false, help: false,
-    replays: "", replaysN: 20,          // Bänder für arena.html
+    replays: "", replaysN: 20,          // Bänder für index.html?replay
     jsonl: "", record: "",              // Trainingsdaten, optional auf einen Agenten
   };
   for (let i = 0; i < argv.length; i++) {
@@ -340,7 +340,7 @@ async function main() {
       + "\n                          [--replays ordner] [--replaysN 20]"
       + "\n                          [--jsonl datei] [--record agent]"
       + "\n\n  Verfügbare Agenten: " + Object.keys(AGENTS).join(", ")
-      + "\n\n  --replays = Bänder zum Anschauen (arena.html)"
+      + "\n\n  --replays = Bänder zum Anschauen (index.html?replay)"
       + "\n  --jsonl   = Zug für Zug zum Lernen (gross)\n");
     return;
   }
@@ -384,7 +384,7 @@ async function main() {
   console.log("");
 }
 
-/* Inhaltsverzeichnis für arena.html. Ein schon vorhandenes wird ERGÄNZT,
+/* Inhaltsverzeichnis für index.html?replay. Ein schon vorhandenes wird ERGÄNZT,
    nicht überschrieben — sonst verliert man beim zweiten Lauf in denselben
    Ordner die Bänder des ersten. */
 function writeManifest(opt) {
@@ -403,8 +403,8 @@ function writeManifest(opt) {
     files,
   }, null, 2));
   console.log("\n  " + path + "  (" + files.length + " Bänder, " + WRITTEN.length + " neu)");
-  console.log("  Anschauen:  arena.html"
-    + (opt.replays === "out/replays" ? "" : "?dir=" + opt.replays));
+  console.log("  Anschauen:  index.html?replay"
+    + (opt.replays === "out/replays" ? "" : "=" + opt.replays));
 }
 
 /* Nur starten, wenn die Datei WIRKLICH aufgerufen wurde. Wer sie nur

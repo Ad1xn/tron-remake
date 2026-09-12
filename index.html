@@ -84,7 +84,44 @@
     </div>
   </div>
 
-  <div class="keys">
+  <!-- ========== Wiedergabe-Leiste ==========
+       Nur mit ?replay in der Adresse sichtbar; src/playback.js blendet
+       sie ein. Sie steht bewusst in DIESER Datei statt auf einer zweiten
+       Seite: das Cockpit darüber ist dasselbe, und genau das
+       Auseinanderlaufen zweier Markup-Kopien hat die alte arena.html
+       zerbrochen. -->
+  <div id="replay-bar" class="replaybar" hidden>
+    <div class="row">
+      <button id="rp-prev"    title="vorheriges Band (P)">⏮</button>
+      <button id="rp-back"    title="ein Tick zurück (←)">◀</button>
+      <button id="rp-play"    title="abspielen / anhalten (Leertaste)">▶</button>
+      <button id="rp-step"    title="ein Tick vor (→)">▶|</button>
+      <button id="rp-restart" title="von vorn (R)">↻</button>
+      <button id="rp-next"    title="nächstes Band (N)">⏭</button>
+
+      <span class="sep"></span>
+      <span class="dim">TICK</span> <b id="rp-tick">0 / 0</b>
+      <input type="range" id="rp-scrub" min="0" max="100" value="0" title="Tick">
+
+      <span class="sep"></span>
+      <span class="dim">TEMPO</span>
+      <input type="range" id="rp-rate" min="0.25" max="8" step="0.25" value="1">
+      <b id="rp-rate-label">1×</b>
+
+      <span class="sep"></span>
+      <span class="dim">BAND</span> <b id="rp-count">0 / 0</b>
+      <label><input type="checkbox" id="rp-auto" checked> AUTO</label>
+      <button id="rp-reload" title="index.json neu laden">⟳</button>
+    </div>
+
+    <div class="row">
+      <select id="rp-select"></select>
+    </div>
+
+    <p class="meta" id="rp-meta">–</p>
+  </div>
+
+  <div class="keys play">
     <span><b>← →</b> drehen</span>
     <span><b>↓</b> bremsen</span>
     <span><b>Q E W</b> nach links/rechts/hinten schauen</span>
@@ -94,6 +131,17 @@
     <span><b>V</b> KI übernimmt</span>
     <span><b>R</b> Neustart</span>
     <span><b>Leertaste</b> Start</span>
+  </div>
+
+  <div class="keys replay">
+    <span><b>Aufnehmen:</b> node tools/selfplay.mjs --matches 20 --replays out/replays</span>
+    <span><b>Leertaste</b> abspielen</span>
+    <span><b>← →</b> ein Tick</span>
+    <span><b>N / P</b> Band</span>
+    <span><b>R</b> von vorn</span>
+    <span><b>C</b> Kamera</span>
+    <span><b>F</b> nächstem Bike zusehen</span>
+    <span><b>Drag &amp; Drop</b> einzelne .json</span>
   </div>
 
   <script type="module" src="src/main.js"></script>

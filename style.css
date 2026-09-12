@@ -178,6 +178,61 @@ body {
 }
 .keys b { color: var(--dim); font-weight: 700; }
 
+/* ---------------- Wiedergabe (index.html?replay) ----------------
+   Dieselbe Farbtafel wie das Cockpit darüber, damit die Leiste nicht
+   wie ein Fremdkörper wirkt: rote Beschriftungen, cyan Zahlen, sonst
+   schwarz. Sichtbar wird sie nur, wenn playback.js das hidden entfernt. */
+/* WICHTIG: eine eigene display-Regel schlägt die eingebaute Regel des
+   Browsers für [hidden] — ohne diese Zeile stünde die Leiste auch im
+   Spiel unter dem Cockpit, obwohl das Attribut gesetzt ist. */
+.replaybar[hidden] { display: none; }
+
+.replaybar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.3rem 1rem 0;
+  font-size: 0.7rem;
+}
+
+.replaybar .row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.replaybar button,
+.replaybar select,
+.replaybar input[type="range"] {
+  font: inherit;
+  font-weight: 700;
+  color: var(--ink);
+  background: #05070f;
+  border: 1px solid #16233f;
+  border-radius: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+}
+.replaybar button { min-width: 2.1rem; }
+.replaybar button:hover { border-color: var(--cap); color: #fff; }
+.replaybar select { max-width: min(40rem, 80vw); }
+.replaybar input[type="range"] { padding: 0; cursor: grab; width: 7rem; }
+.replaybar #rp-scrub { width: min(26rem, 45vw); }
+.replaybar .sep { width: 1px; height: 1.1rem; background: #16233f; margin: 0 0.2rem; }
+.replaybar .dim { color: var(--cap); letter-spacing: 0.08em; }
+.replaybar b { color: var(--cyan); font-weight: 700; }
+.replaybar label { display: flex; gap: 0.3rem; align-items: center; cursor: pointer; color: var(--cap); }
+.replaybar .meta { margin: 0; text-align: center; color: var(--dim); font-weight: 400; }
+.replaybar .meta b { color: var(--ink); }
+
+/* Eine Tastenzeile fürs Spielen, eine fürs Zusehen — playback.js setzt
+   die Klasse am body. */
+.keys.replay { display: none; }
+body.replaying .keys.play { display: none; }
+body.replaying .keys.replay { display: flex; }
+
 @media (max-width: 900px) {
   .cockpit { grid-template-columns: 1fr; gap: 0.4rem; }
   .info { align-items: flex-start; }

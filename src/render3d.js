@@ -510,6 +510,11 @@ export function createRenderer(canvas) {
   let eyeSmooth = null, aimSmooth = null;
 
   function followed() {
+    /* Vor dem ersten setGame() gibt es kein Spiel. Ohne diese Zeile wirft
+       schon der Getter view.followId — und wer ihn aus einer
+       requestAnimationFrame-Rückrufkette heraus aufruft, verliert die
+       ganze Schleife still, weil das abschliessende rAF nie läuft. */
+    if (!game) return null;
     const alive = game.cycles.filter((c) => c.alive);
     if (followId) {
       const c = game.cycles.find((k) => k.id === followId);
