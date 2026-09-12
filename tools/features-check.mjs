@@ -96,8 +96,12 @@ for (let m = 0; m < MATCHES; m++) {
 
   // Nur jeden AGENT_EVERY-ten Schritt prüfen — so oft, wie ein Netz
   // auch gefragt würde. Alles andere wäre 125-mal pro Sekunde umsonst.
+  /* Die Momentaufnahmen halten ÜBER die Schritte hinweg, nicht je
+     Schritt: nur so lässt sich auch ein Tod abrechnen, der zwischen zwei
+     Stichproben passiert. */
+  const snaps = new Map();
+
   while (game.phase === "running" && game.tick < 30000) {
-    const snaps = new Map();
     const probe = game.tick % 4 === 0;      // so oft wie ein Agent gefragt wird
 
     for (const b of probe ? game.cycles : []) {
@@ -163,12 +167,23 @@ for (let m = 0; m < MATCHES; m++) {
     deaths += events.deaths.length;
     if (events.finished) wins += events.survivors.length;
 
-    // (f) Belohnung abrechnen — und aufschlüsseln.
+    /* (f) Belohnung abrechnen — im Agenten-Takt UND immer dann, wenn
+       etwas Endgültiges passiert ist. Ohne den zweiten Teil fallen Tod,
+       Abschuss und Sieg fast immer zwischen zwei Stichproben: sie treffen
+       nur jeden vierten Schritt. In der Auswertung standen sie deshalb
+       auf 0,00 — bei 10 Toden und 5 Siegen im selben Lauf. */
+    if (!probe && !events.deaths.length && !events.finished) continue;
+
     for (const b of game.cycles) {
       const before = snaps.get(b.id);
       if (!before) continue;
-      const r = reward(before, viewOfGame(game, b.id), events);
-      for (const k in rewardTotals) rewardTotals[k] += r.parts[k];
+      // Das Bike MUSS mitgegeben werden: ohne es kann reward() nicht
+      // in events.survivors nachsehen, und der Siegbonus bleibt aus.
+      const v = reward(before, viewOfGame(game, b.id), events, b);
+      for (const k in rewardTotals) rewardTotals[k] += v.parts[k];
+      // Tote vergessen, sonst sterben sie in jedem weiteren Schritt neu.
+      if (b.alive) snaps.set(b.id, rewardSnapshot(viewOfGame(game, b.id)));
+      else snaps.delete(b.id);
       ok();
     }
   }

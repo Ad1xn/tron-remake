@@ -378,7 +378,9 @@ export function rewardSnapshot(view) {
     rubberUsedTotal: RULES.RUBBER - view.self.rubber,
     alive: view.self.alive !== false,
     others: view.others.filter((o) => o.alive).length,
-    kills: view.self.kills || 0,
+    /* Kein kills mehr: viewOfGame() legt das Feld gar nicht an, der Wert
+       war immer 0 — und gelesen hat ihn nie jemand. Abschüsse kommen aus
+       events.deaths. */
   };
 }
 
@@ -388,7 +390,17 @@ export function reward(before, viewAfter, events = null, cycle = null,
   const after = rewardSnapshot(viewAfter);
 
   const died = before.alive && !after.alive;
-  const won = after.alive && before.others > 0 && after.others === 0;
+
+  /* GEWONNEN — die Engine fragen, nicht zählen, wer noch lebt.
+     "alle anderen sind tot" stimmt nur beim Ausscheiden. Entscheidet die
+     Win-Zone, leben noch alle; in lts und fortress gewinnt eine SEITE und
+     die Mitspieler leben auch. In beiden Fällen fiel der Siegbonus
+     lautlos aus — ein Netz hätte fürs Gewinnen nie etwas bekommen.
+     events.survivors ist genau die Menge, die finish() als Sieger
+     eingetragen hat, in allen vier Modi. */
+  const won = events && events.finished
+    ? !!cycle && events.survivors.includes(cycle)
+    : after.alive && before.others > 0 && after.others === 0;
 
   let kills = 0;
   if (events) {
