@@ -86,7 +86,9 @@ export function situation(game, c) {
   return {
     front: l.front, left: l.left, right: l.right,
     tFront: tti(l.front), tLeft: tti(l.left), tRight: tti(l.right),
-    rubberSecs: c.rubber / RULES.RUBBER_BURN,
+    /* Kein rubberSecs mehr: Gummi ist streckenbasiert, nicht
+       zeitbasiert — RULES.RUBBER_BURN gibt es darum nicht mehr, und
+       das Feld war Infinity. Benutzt hat es ohnehin niemand. */
     rubberFrac: c.rubber / RULES.RUBBER,
   };
 }

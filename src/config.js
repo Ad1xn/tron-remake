@@ -215,6 +215,16 @@ export const RULES = {
   /* Gemeinsame Zonen-Optik */
   ZONE_HEIGHT: 5.0,             // ZONE_HEIGHT (echt: 5.0)
   FORTRESS_COLLAPSE: 0.5,       // ZONE_COLLAPSE_SPEED (echt: 0.5)
+
+  /* WIN-ZONE — die Grundwerte, die jeder Modus überschreiben kann.
+     Ohne sie stand in engine.js `w.initial ?? RULES.WIN_ZONE_INITIAL`
+     auf undefined: der Radius wurde NaN, jeder Abstandsvergleich damit
+     falsch, und die Runde endete in der Sekunde des Erscheinens mit
+     einem willkürlichen Sieger. Alle vier aus settings.cfg abgelesen. */
+  WIN_ZONE_INITIAL: 5,          // WIN_ZONE_INITIAL_SIZE (echt: 5) — Startradius in m
+  WIN_ZONE_EXPANSION: 1,        // WIN_ZONE_EXPANSION (echt: 1) — m/s, im Sumo negativ
+  WIN_ZONE_RANDOMNESS: 0.8,     // WIN_ZONE_RANDOMNESS (echt: .8) — 0 = Mitte, 1 = überall
+  WIN_ZONE_DEATH: false,        // WIN_ZONE_DEATHS (echt: 0) — Win-Zone, KEINE Todeszone
 };
 
 /* =========================================================================

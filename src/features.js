@@ -165,8 +165,20 @@ export function encodeSensors(view) {
   out[k++] = t(view.rays.right);
 
   out[k++] = s.rubber / RULES.RUBBER;
-  out[k++] = Math.min((s.speed - RULES.SPEED_MIN) / (RULES.SPEED_MAX - RULES.SPEED_MIN), 1);
-  out[k++] = s.brake / RULES.BRAKE;
+
+  /* Tempo als VIELFACHES des Grundtempos — NICHT gegen SPEED_MAX.
+     Gemessen über 270000 Schritte (4 Bots, 12 Seeds): p50 = 30,0 (also
+     genau SPEED), p99 = 46,8, hoechster Wert 61,3. SPEED_MAX ist 200,
+     weil das Original dort "unbegrenzt" meint — gegen 200 normiert
+     laege das ganze Signal zwischen 0,07 und 0,31, und das Netz muesste
+     jeden Unterschied aus einem Viertel des Wertebereichs lesen.
+     Drei Grundtempi als Vollausschlag: p50 ~ 0,33, in der Messung nie
+     gesaettigt. */
+  out[k++] = Math.min(s.speed / (RULES.SPEED * 3), 1);
+
+  /* Der Bremsvorrat, 0…1 — BRAKE_MAX. RULES.BRAKE ist die
+     Verzoegerung in m/s2 und hat hier nichts zu suchen. */
+  out[k++] = s.brake / RULES.BRAKE_MAX;
 
   const near = nearestOther(view);
   if (near) {
@@ -346,7 +358,7 @@ export function shapes(n = PATCH_N) {
      SIEG    Der Preis fürs Gewinnen.
 
    ANSCHAUEN STATT RATEN: welcher Term eine Marotte auslöst, sieht man
-   in arena.html in drei Sekunden — im Terminal nie.
+   in index.html?replay in drei Sekunden — im Terminal nie.
    ========================================================================= */
 export const REWARD = {
   RAUM:  0.6,
