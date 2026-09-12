@@ -23,8 +23,10 @@ Dann <http://localhost:8123> öffnen.
 | `←` `→` | um 90° drehen (relativ, wie im Original) |
 | `↓` | bremsen |
 | `Leertaste` | Start und weiter |
-| `C` | Kamera: Verfolger / Übersicht |
+| `Q` `E` `W` | nach links / rechts / hinten schauen |
+| `C` | Kamera: Bike / Drohne / Cockpit |
 | `F` | einem anderen Bike zusehen |
+| `M` | Modus wechseln (vier, siehe unten) |
 | `V` | die KI übernimmt dein Bike |
 | `R` | Neustart |
 
@@ -34,32 +36,59 @@ Dann <http://localhost:8123> öffnen.
   „Strahl gegen Strecke". Deshalb passt ein Bike durch jede Lücke, die es
   wirklich trifft — auch durch zwei Zentimeter.
 - **Rubber.** Wer in eine Wand fährt, stirbt nicht sofort. Er drückt dagegen
-  und verbraucht Gummi (`RULES.RUBBER`, gut eine Sekunde Dauerdruck). Ist der
-  Vorrat leer, ist Schluss. Er füllt sich langsam wieder auf. Das ist der
-  Grund, warum man sich in Lücken quetschen kann, die zu knapp sind.
-- **Grinden.** Nahe an einer Wand zu fahren macht **schneller** — an einer
-  fremden mehr als an der eigenen. Aus 30 m/s werden so schnell 60 oder 90.
-  Das ist der Kern des Spiels: Tempo holen und dabei genau das Gummi
-  riskieren.
-- **Endliche Wände und eine Todeszone.** Die eigene Wand verschwindet hinten
-  wieder (`WALL_LENGTH`). Die Arena füllt sich also nie — darum wächst nach
-  `ZONE_DELAY` Sekunden in der Mitte eine Zone, die tötet und die Fahrer nach
-  aussen treibt. Ohne sie würde eine Runde nie enden; das ist nachgemessen,
-  nicht vermutet.
+  und verbraucht Gummi — und zwar **streckenbasiert**: `CYCLE_RUBBER` sind
+  4 *Meter*, keine Sekunden. Ist der Vorrat leer, ist Schluss; er füllt sich
+  langsam wieder auf. Das ist der Grund, warum man sich in Lücken quetschen
+  kann, die zu knapp sind.
+- **Grinden.** Nahe an einer Wand zu fahren macht **schneller**, ab
+  `CYCLE_WALL_NEAR` = 6 m. Eigene und fremde Wand schieben gleich stark
+  (`ACCEL_SELF` = `ACCEL_ENEMY` = 1); die **Aussenmauer schiebt gar nicht**
+  (`ACCEL_RIM` = 0), Randfahren bringt also nichts. Gemessen über 270 000
+  Schritte mit vier Bots: Median 30 m/s, p99 47, Spitzen um 60 — im Gedränge
+  zu viert auch 80. Das ist der Kern des Spiels: Tempo holen und dabei genau
+  das Gummi riskieren.
+- **Endliche Wände und die Win-Zone.** Die eigene Wand verschwindet hinten
+  wieder (`WALL_LENGTH`), die Arena füllt sich also nie. Gegen das Patt gibt
+  es die **Win-Zone** — kein Ziel, sondern ein Patt-Brecher, und **keine**
+  Todeszone: wer sie berührt, *gewinnt*. Sie braucht **zwei** Bedingungen
+  (Rundenzeit über 60 s **und** 30 s ohne Toten) und erscheint dann mit 5 m
+  Radius, wachsend um 1 m/s. Im Original ist sie im Einzelspieler ganz
+  abgeschaltet (`SP_WIN_ZONE_MIN_ROUND_TIME 1000000`); hier stehen die
+  Server-Werte, weil sonst 16 vorsichtige Bots gar nicht fertig werden —
+  gemessen: 480 s und immer noch kein Ende.
 
 Dazu die **Bremse** mit eigenem Vorrat (langsamer = engere Kurve) und eine
 kürzeste Zeit zwischen zwei Kurven (`TURN_DELAY`).
 
-Alle Zahlen dazu stehen in `RULES` in [src/config.js](src/config.js), mit
-einer Zeile Begründung an jeder.
+### Vier Modi
+
+| Modus | Mannschaften | Zonen | Idee |
+| --- | --- | --- | --- |
+| `lms` | jeder für sich | keine | Last Man Standing, das Grundspiel |
+| `lts` | zwei | keine | Last Team Standing |
+| `fortress` | zwei | eine je Team | die gegnerische Festung erobern |
+| `sumo` | jeder für sich | eine je Fahrer | die eigene Zone halten |
+
+Fortress und Sumo benutzen **dieselbe Formel**, nur mit anderen Vorzeichen:
+
+```
+erobert += (Gegner × CONQUEST − Besitzer × DEFEND − DECAY) × dt
+```
+
+Fortress 0,5 / 0,25 / 0,1 — Sumo 0 / 0,6 / −0,3. Der negative Verfall im Sumo
+heisst: die eigene Zone erobert sich selbst, sobald man nicht darin steht.
+
+Alle Zahlen stehen in `RULES` und `MODES` in
+[src/config.js](src/config.js), mit einer Zeile Begründung an jeder — und mit
+dem Originalnamen aus `settings.cfg` daneben.
 
 ## Dateien
 
 | Datei | Inhalt |
 | --- | --- |
-| `index.html` | Aufbau der Seite: HUD, Canvas, Messer, Overlay, Import-Map |
-| `style.css` | Arcade-Optik, inklusive der Balken für Rubber/Speed/Brakes |
-| `src/config.js` | Alle Regeln als Zahlen, plus die Fahrerliste |
+| `index.html` | Die ganze Seite: Canvas, Cockpit, Overlay, Wiedergabe-Leiste, Import-Map |
+| `style.css` | Optik nach `classic.aacockpit.xml`: schwarz, rote Beschriftungen, cyan Zahlen |
+| `src/config.js` | Alle Regeln als Zahlen, die vier Modi, Farben und Startplätze |
 | `src/engine.js` | Die Physik. Kein DOM, keine Grafik, läuft auch in Node |
 | `src/agents.js` | Die Bots und die Schnittstelle für eigene KIs |
 | `src/features.js` | Was ein Netz sieht und wofür es belohnt wird |
@@ -67,9 +96,8 @@ einer Zeile Begründung an jeder.
 | `src/render3d.js` | Die 3D-Bühne: Arena, Wände, Bike-Modell, Bloom, Kamera |
 | `src/input.js` | Tastatur; Kurven sind Ereignisse, nicht Zustände |
 | `src/hud.js` | Rubber, Speed, Brakes, Punkte, Overlay |
-| `src/main.js` | Steckt alle Teile zusammen und hält die Spielschleife |
-| `src/arena.js` | Die Steuerung des Zuschauerraums |
-| `arena.html` | Aufgenommene Matches anschauen, Schritt für Schritt |
+| `src/main.js` | Steckt alle Teile zusammen, hält die Spielschleife, verzweigt auf `?replay` |
+| `src/playback.js` | Der Zuschauerraum für Bänder — hängt an derselben Seite |
 | `tools/serve.py` | Entwicklungs-Server ohne Zwischenspeicher |
 | `tools/selfplay.mjs` | Matches ohne Browser: Agenten vergleichen, Daten sammeln |
 | `tools/features-check.mjs` | Prüft die Wahrnehmung der KI (siehe unten) |
@@ -104,11 +132,18 @@ import { AGENTS } from "./src/agents.js";
 AGENTS.meinNetz = ({ game, cycle, rng }) => ({ turn: 1, brake: false });
 ```
 
-`turn` ist `+1` links, `-1` rechts, `0` geradeaus. Dann in
-[src/config.js](src/config.js) bei `ROSTER` eintragen:
+`turn` ist `+1` links, `-1` rechts, `0` geradeaus. Mitfahren lassen kannst du
+ihn auf zwei Wegen — dauerhaft über die `LADDER` in
+[src/main.js](src/main.js), aus der die Runde ihre Bots zieht:
 
 ```js
-{ name: "NETZ", color: 0x22d3ee, driver: { type: "agent", agent: "meinNetz" } }
+const LADDER = ["grinder", "hunter", "cruiser", "meinNetz"];
+```
+
+…oder zum Ausprobieren aus der Konsole, ohne Neustart:
+
+```js
+TRON.game.cycles[1].driver = { type: "agent", agent: "meinNetz" };
 ```
 
 Zwei Dinge halten den Weg zu einem lokalen Modell frei:
@@ -132,7 +167,7 @@ Sie schickt die Beobachtung als POST und erwartet `{ "turn": -1, "brake": false 
 
 Die vier eingebauten Bots sind absichtlich eine Leiter. Sie denken alle in
 **Zeit**, nicht in Metern — bei 30 m/s sind 3 m eine Zehntelsekunde, bei
-90 m/s ein Drittel davon:
+60 m/s die Hälfte davon:
 
 | Agent | Idee |
 | --- | --- |
@@ -148,6 +183,7 @@ node tools/selfplay.mjs --matches 500
 node tools/selfplay.mjs --matches 200 --agents grinder,hunter
 node tools/selfplay.mjs --matches 150 --matrix                  # jeder gegen jeden
 node tools/selfplay.mjs --matches 100 --players 3               # 1v1v1
+node tools/selfplay.mjs --matches 50  --mode fortress --players 4
 node tools/selfplay.mjs --matches 20  --replays out/replays     # zum Anschauen
 node tools/selfplay.mjs --matches 50  --jsonl daten/spiele.jsonl --record grinder
 node tools/selfplay.mjs --help
@@ -157,6 +193,16 @@ Am Ende steht eine Tabelle: Siege, Prozent, mittlere Platzierung, Punkte,
 Abschüsse, verbrauchtes Gummi und Spitzentempo. Die Platzierung ist die
 brauchbarste Spalte, sobald mehr als zwei mitfahren — „zweiter von vier" sagt
 mehr als „nicht gewonnen".
+
+Mit `--mode lts` oder `--mode fortress` fährt man Mannschaften. Die Engine
+verteilt Fahrer *i* auf Team *i* % 2, `--agents a,b --players 4` stellt also
+zweimal a gegen zweimal b. Die erste Spalte heisst dann **SEITE** statt SIEGE:
+in wie vielen Matches der Agent auf der Siegerseite stand, pro Match höchstens
+einmal gezählt.
+
+Wer gewonnen hat, sagt die Engine — nicht „wer lebt noch". Der Unterschied ist
+nicht akademisch: entscheidet die Win-Zone, leben noch alle, und die Zählung
+nach Überlebenden erklärte 13 von 20 lms-Matches zum Unentschieden.
 
 Gleicher `--seed` ergibt exakt dieselben Matches. Die Startplätze rotieren von
 Match zu Match, sonst gewinnt am Ende nur die bessere Ecke. Zum **Bewerten**
@@ -179,16 +225,26 @@ Zwei Sorten Aufnahme, die man nicht verwechseln darf:
   Kilobyte — zum Anschauen, nicht zum Lernen. Dazu entsteht eine `index.json`,
   weil ein statischer Webserver keinen Ordner auflisten kann.
 
-## Aufnahmen anschauen: `arena.html`
+## Aufnahmen anschauen: `index.html?replay`
 
 ```bash
 node tools/selfplay.mjs --matches 20 --replays out/replays
 ```
 
-Dann `arena.html` öffnen. Die Seite spielt die Bänder in derselben 3D-Arena
-ab: anhalten, Schritt für Schritt vor und zurück, Tempo 0,25× bis 8×, Band
-wechseln, Regler zum Springen — oder eine einzelne `.json` per Drag & Drop.
-Mit `arena.html?dir=…` liest sie einen anderen Ordner.
+Dann <http://localhost:8123/index.html?replay> öffnen — **dieselbe Seite**,
+nur fahren die Bikes vom Band statt von `agents.js`. Anhalten, Schritt für
+Schritt vor und zurück, Tempo 0,25× bis 8×, Band wechseln, Regler zum
+Springen — oder eine einzelne `.json` ins Fenster ziehen. Mit
+`?replay=pfad/zum/ordner` liest sie einen anderen Ordner.
+
+Es ist bewusst keine zweite Seite: die frühere `arena.html` hielt eine eigene
+Kopie des Cockpit-Markups und ging beim ersten Umbau von `hud.js` kaputt, ohne
+dass es jemandem auffiel. Ein Cockpit, ein Markup, eine Optik.
+
+Ein Band speichert nur `seed` und Richtungen und wird mit der Engine von
+**heute** nachgespielt. Ändert sich eine Regel, läuft eine alte Aufnahme
+auseinander — die Wiedergabe vergleicht deshalb die Länge und sagt es, statt
+dich ein anderes Match ansehen zu lassen.
 
 Das ist nicht Deko, sondern das Werkzeug, mit dem man später eine Belohnung
 debuggt: eine Verlustkurve im Terminal sieht gleich aus, egal ob ein Netz das
@@ -233,13 +289,27 @@ ein Netz im Spiel andere Zahlen als beim Lernen, und niemand merkt es. Dazu
 prüft es die Wertebereiche und ob sich jede Eingabe überhaupt bewegt: eine
 Zahl, die nie wechselt, ist Ballast — und meistens ein Fehler.
 
+Das ist keine Theorie. Beim Umbenennen der `RULES` auf die Originalnamen
+verwaiste `RULES.SPEED_MIN`, und der Sensor `tempo` war danach in **jedem**
+Schritt `NaN` — 11 370 Fehler bei 79 586 Prüfungen, und kein Mensch hätte es
+beim Lesen gesehen.
+
+Drei Meldungen bleiben und sind **richtig so**: `zone_naehe` und `zone_aktiv`
+stehen konstant auf 0, weil die Win-Zone erst spät erscheint, und `bremse`
+steht konstant auf 1, weil **kein einziger** der vier Bots je bremst. Der
+Prüfer bleibt absichtlich laut — sonst verdeckt er den Tag, an dem eine
+Konstante ein echter Fehler ist.
+
 ## Noch offen
 
-- Das Training selbst. Alles darunter steht: Physik ohne Bildschirm,
-  Messstand, Bänder, Wahrnehmung, Belohnung.
-- Die Bots sterben meist an der Todeszone, nicht an einer Wand. Sie fahren
-  also sauber, aber zu zahm — als Messlatte für ein Netz taugen sie, als
-  Vorbild für gutes Spiel noch nicht.
-- Mehr als vier Fahrer: `SPAWNS` in `config.js` hat sechs Plätze, Engine und
-  HUD kommen damit klar; kopflos ist es mit sechs geprüft.
+- **Das Training selbst.** Alles darunter steht: Physik ohne Bildschirm,
+  Messstand über alle vier Modi, Bänder, Wahrnehmung, Belohnung. Die Latte
+  liegt: `hunter` schlägt `rookie` in 96,7 % der 1v1-Matches.
+- **Die Belohnung ist nicht geprüft.** `features-check` weist sie nach Termen
+  auf, und `leben` + `zeit` machen zusammen rund 80 % aus. Das ist genau die
+  Form, die ein Netz zum Im-Kreis-Fahren erzieht — nachrechnen, bevor
+  Rechenzeit hineinfliesst.
+- **Kein Bot bremst.** Wer deren Züge nachahmt, lernt eine Bremse nie kennen.
+- `aiplayers.cfg` und `models/*.mod` aus dem gekauften Spiel sind noch
+  ungenutzt.
 - Three.js kommt aus dem CDN. Ohne Netz zeigt die Seite einen Hinweis.
