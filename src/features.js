@@ -54,7 +54,7 @@ export function viewOfGame(game, cycleId) {
       x: c.x, y: c.y, dir: c.dir, speed: c.speed, alive: c.alive,
     })),
     walls: segs,
-    zone: { active: game.zone.active, x: game.zone.x, y: game.zone.y, r: game.zone.r },
+    zone: { active: game.winZone.active, x: game.winZone.x, y: game.winZone.y, r: game.winZone.r },
     rays: { front: l.front.dist, left: l.left.dist, right: l.right.dist },
   });
 }
@@ -81,7 +81,7 @@ export function viewOfObs(obs) {
       speed: o.speed, alive: o.alive,
     })),
     walls: segs,
-    zone: { active: obs.zone.active, x: obs.zone.x, y: obs.zone.y, r: obs.zone.r },
+    zone: { active: obs.winZone.active, x: obs.winZone.x, y: obs.winZone.y, r: obs.winZone.r },
     rays: { front: obs.front.dist, left: obs.left.dist, right: obs.right.dist },
   });
 }

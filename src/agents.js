@@ -32,37 +32,43 @@ import { RULES } from "./config.js";
 const STRAIGHT = { turn: 0, brake: false };
 
 /* Muss ich JETZT etwas tun? Gibt eine Aktion zurück oder null.
-   Drei Notfälle, in dieser Reihenfolge: Zone, Frontalfahrt, Wand. */
-function emergency(game, c, s, react) {
-  // 1. In der Todeszone hilft nur raus — sie kommt von der Mitte.
-  if (game.zone.active) {
-    const dx = c.x - game.zone.x, dy = c.y - game.zone.y;
-    const dist = Math.hypot(dx, dy) - game.zone.r;
-    if (dist < c.speed * 0.6) {
-      const d = AXES[c.dir];
-      const outward = (dx * d.x + dy * d.y);          // fahre ich nach aussen?
-      if (outward <= 0) {
-        const right = -dx * d.y + dy * d.x;           // wo ist "raus"?
-        const want = right > 0 ? -1 : 1;
-        const room = want === 1 ? s.tLeft : s.tRight;
-        if (room > 0.25) return { turn: want, brake: false };
-      }
-    }
-  }
+   Zwei Notfälle, in dieser Reihenfolge: Entgegenkommer, dann Wand.
 
-  // 2. Entgegenkommer auf meiner Spur.
+   Die Zone ist KEIN Notfall mehr. In der ersten Fassung habe ich sie als
+   Todeszone gebaut, vor der man wegmuss — im Original ist die Win-Zone
+   ein ZIEL: wer hineinfährt, gewinnt. Sie steht deshalb weiter unten
+   beim Wollen, nicht hier beim Müssen. */
+function emergency(game, c, s, react) {
   const tHead = headOnTime(game, c);
   if (tHead < 0.7) {
     const best = options(game, c, s).find((o) => o.turn !== 0 && o.t > 0.3);
     if (best) return { turn: best.turn, brake: false };
   }
 
-  // 3. Wand vor mir.
   if (s.tFront < react) {
     const best = options(game, c, s)[0];
-    return { turn: best.turn, brake: s.tFront < 0.15 && best.t < 0.5 };
+    // Bremsen macht die Kurve enger — und im Original kostet eine Kurve
+    // Tempo, ein gebremster Bogen ist also kein doppelter Verlust.
+    return { turn: best.turn, brake: s.tFront < 0.2 && best.t < 0.6 };
   }
   return null;
+}
+
+/* WOLLEN: auf ein Ziel zusteuern, wenn nebenbei Platz ist. Gibt eine
+   Aktion zurück oder null. Genau so wird aus "überleben" ein Spiel. */
+function steerTo(game, c, s, tx, ty, minRoom = 0.6) {
+  const d = AXES[c.dir];
+  const dx = tx - c.x, dy = ty - c.y;
+  const forward = dx * d.x + dy * d.y;
+  const right = -dx * d.y + dy * d.x;
+
+  // Liegt es vor mir und mittig genug? Dann einfach weiterfahren.
+  if (forward > 0 && Math.abs(right) < 6) return null;
+
+  const want = right > 0 ? -1 : 1;              // -1 = rechts, 1 = links
+  const room = want === 1 ? s.tLeft : s.tRight;
+  if (room < minRoom) return null;
+  return { turn: want, brake: false };
 }
 
 
@@ -106,12 +112,27 @@ export function headOnTime(game, c, rival = nearestRival(game, c)) {
   return rival.forward / Math.max(c.speed + rival.cycle.speed, 1);
 }
 
+/* ENDSPIEL. Sind nur noch wenige übrig, hört das Kreisen auf: dann
+   sucht jeder Bot die Entscheidung. Ohne das passiert in den letzten
+   30 Sekunden gar nichts mehr, und die Runde endet an der Win-Zone
+   statt an einer Wand — im Original entscheiden dort Fehler von
+   Menschen, die meine Bots nicht machen. */
+export function endgame(game) {
+  const alive = game.cycles.filter((c) => c.alive).length;
+  /* Die Schwelle ist gemessen, nicht geraten: bei 0,28 blieben in Last
+     Man Standing sechs bis sieben Fahrer übrig, die sich nie trafen —
+     7 von 8 Runden entschied dann die Win-Zone. Bei 0,45 fangen sie
+     früh genug an, sich zu suchen. */
+  return alive > 1 && alive <= Math.max(3, Math.ceil(game.cycles.length * 0.45));
+}
+
 /* Der nächste lebende Gegner, egozentrisch (vorn/rechts in Metern). */
-export function nearestRival(game, c) {
+export function nearestRival(game, c, enemiesOnly = false) {
   const d = AXES[c.dir];
   let best = null, bestD = Infinity;
   for (const o of game.cycles) {
     if (o.id === c.id || !o.alive) continue;
+    if (enemiesOnly && c.team >= 0 && o.team === c.team) continue;
     const dx = o.x - c.x, dy = o.y - c.y;
     const dist = Math.hypot(dx, dy);
     if (dist < bestD) {
@@ -128,6 +149,46 @@ export function nearestRival(game, c) {
 }
 
 
+/* Wohin will dieser Bot gerade? Das hängt am Modus, und seit es vier
+   davon gibt, an den ZONEN statt am Modusnamen:
+
+     eigene Zone, die kippt  → sofort zurück (Sumo: sonst stirbt man)
+     eigene Zone, Verteidiger→ in der Nähe bleiben
+     fremde Zone             → erobern
+     Win-Zone aktiv          → hin, wer zuerst da ist, gewinnt
+
+   Im Sumo besitzt jeder seine eigene Zone und der Verfall ist negativ:
+   wer nicht drinsteht, verliert sie von selbst. Darum steht "eigene
+   Zone retten" ganz oben. */
+export function goal(game, c) {
+  const own = game.zones.find((z) => z.team === c.team && !z.conquered);
+  const foe = game.zones.find((z) => z.team !== c.team && !z.conquered);
+
+  if (own) {
+    const drin = Math.hypot(c.x - own.x, c.y - own.y) < own.r * 0.8;
+
+    /* Kippt sie gerade, oder bin ich draussen und sie verfällt von
+       selbst? Dann zurück, egal was sonst ansteht. */
+    const kippt = own.conquest > 0.12 || (!drin && game.modeDef.zone.decay < 0);
+    if (kippt) return { x: own.x, y: own.y, why: "retten", dringend: true };
+
+    /* Drin und sicher: in der Nähe bleiben, nicht wegfahren. */
+    if (game.modeDef.zone.decay < 0) {
+      return drin ? null : { x: own.x, y: own.y, why: "halten" };
+    }
+
+    // Fortress: die Hälfte der Mannschaft bleibt hinten.
+    if (c.id % 2 === 0) return { x: own.x, y: own.y, why: "halten" };
+  }
+
+  if (foe) return { x: foe.x, y: foe.y, why: "stürmen" };
+
+  const z = game.winZone;
+  if (z.active) return { x: z.x, y: z.y, why: "win-zone" };
+  return null;
+}
+
+
 /* ==================================================================
    1. CRUISER — fährt vernünftig und wird alt.
    ==================================================================
@@ -139,6 +200,21 @@ function cruiser({ game, cycle, rng }) {
   const s = situation(game, cycle);
   const now = emergency(game, cycle, s, 0.40);
   if (now) return now;
+
+  const g = goal(game, cycle);
+  if (g) {
+    const go = steerTo(game, cycle, s, g.x, g.y, g.dringend ? 0.35 : 0.7);
+    if (go && (g.dringend || rng() < 0.5)) return go;
+  }
+
+  // Im Endspiel nicht mehr abwarten, sondern den Gegner suchen.
+  if (endgame(game)) {
+    const rival = nearestRival(game, cycle, true);
+    if (rival && rival.dist > 12) {
+      const go = steerTo(game, cycle, s, rival.cycle.x, rival.cycle.y, 0.55);
+      if (go && rng() < 0.6) return go;
+    }
+  }
 
   // Freie Fahrt. Nicht ewig geradeaus — sonst endet jede Runde am Rand.
   if (s.front.rim && s.tFront < 1.2 && rng() < 0.05) return sideTurn(s);
@@ -169,14 +245,31 @@ function grinder({ game, cycle, rng }) {
   const now = emergency(game, cycle, s, REACT);
   if (now) return now;
 
-  // Grinden: die nähere Seite ist mein Schleifstein. Zu weit weg →
-  // hinlenken, zu nah → nichts tun (die Wand schiebt schon).
-  const near = Math.min(s.left.dist, s.right.dist);
-  const toWall = s.left.dist < s.right.dist ? 1 : -1;
+  /* Grinden: die nähere Seite ist mein Schleifstein. WICHTIG seit der
+     Umstellung auf die echten Werte: die AUSSENMAUER schiebt nicht
+     (ACCEL_RIM = 0). Am Rand zu kleben bringt also nichts — Tempo gibt
+     es nur an Spielerwänden. */
+  const nearLeft = s.left.rim ? Infinity : s.left.dist;
+  const nearRight = s.right.rim ? Infinity : s.right.dist;
+  const near = Math.min(nearLeft, nearRight);
+  const toWall = nearLeft < nearRight ? 1 : -1;
 
-  if (near > 8 && s.tFront > 0.8) {
-    // Keine Wand in Reichweite: eine suchen, aber nicht panisch.
-    if (rng() < 0.04) return { turn: toWall, brake: false };
+  if (near > 6 && s.tFront > 0.8 && rng() < 0.05) {
+    return { turn: toWall, brake: false };
+  }
+
+  const g = goal(game, cycle);
+  if (g && (g.dringend || rng() < 0.3)) {
+    const go = steerTo(game, cycle, s, g.x, g.y, g.dringend ? 0.3 : 0.5);
+    if (go) return go;
+  }
+
+  if (endgame(game)) {
+    const rival = nearestRival(game, cycle, true);
+    if (rival && rival.dist > 10 && rng() < 0.5) {
+      const go = steerTo(game, cycle, s, rival.cycle.x, rival.cycle.y, 0.5);
+      if (go) return go;
+    }
   }
 
   return STRAIGHT;
@@ -195,8 +288,15 @@ function hunter({ game, cycle, rng }) {
   const now = emergency(game, cycle, s, 0.32);
   if (now) return now;
 
-  const rival = nearestRival(game, cycle);
-  if (!rival || rival.dist > game.arena * 0.5) return cruiser({ game, cycle, rng });
+  const g = goal(game, cycle);
+  if (g && (g.dringend || (g.why !== "stürmen" && rng() < 0.4))) {
+    const go = steerTo(game, cycle, s, g.x, g.y, g.dringend ? 0.35 : 0.7);
+    if (go) return go;
+  }
+
+  const rival = nearestRival(game, cycle, true);
+  const reach = endgame(game) ? game.arena : game.arena * 0.4;
+  if (!rival || rival.dist > reach) return cruiser({ game, cycle, rng });
 
   // Er fährt quer (heading 1 oder 3): vor ihn ziehen, damit er in meine
   // Wand läuft. Dafür in seine Richtung abbiegen, wenn dort Luft ist.
@@ -228,6 +328,11 @@ function hunter({ game, cycle, rng }) {
    ================================================================== */
 function rookie({ game, cycle, rng }) {
   const s = situation(game, cycle);
+  const g = goal(game, cycle);
+  if (g && g.dringend && s.tFront > 0.3) {
+    const go = steerTo(game, cycle, s, g.x, g.y, 0.3);
+    if (go) return go;
+  }
   if (headOnTime(game, cycle) < 0.35) return { turn: rng() < 0.5 ? 1 : -1, brake: false };
   if (s.tFront < 0.22) {
     return { turn: rng() < 0.5 ? 1 : -1, brake: rng() < 0.3 };

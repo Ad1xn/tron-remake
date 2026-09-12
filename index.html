@@ -4,16 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TRON — Lightcycles</title>
-
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap">
   <link rel="stylesheet" href="style.css">
 
   <!-- Eine "importmap" sagt dem Browser, wo der nackte Name "three"
-       herkommt. Dadurch stehen in den src/-Dateien schöne kurze
-       Importe statt langer URLs — und es bleibt beim Bauen-ohne-Build:
-       kein npm, kein Bundler. -->
+       herkommt. Kein npm, kein Bundler. -->
   <script type="importmap">
   {
     "imports": {
@@ -25,31 +19,16 @@
 </head>
 <body>
 
-  <!-- ========== Kopfzeile: Punktestand, Runde, wer lebt ========== -->
-  <header class="hudbar">
-    <div class="chip">
-      <span class="label">SCORE</span>
-      <span class="value gold" id="score-value">0</span>
-    </div>
-
-    <div class="middle">
-      <div class="chip">
-        <span class="label">SPEED</span>
-        <span class="value" id="speed-value">30</span>
-      </div>
-      <!-- Ein Punkt pro Fahrer, in seiner Farbe. Geht aus, wenn er raus ist. -->
-      <div class="dots" id="rider-dots"></div>
-    </div>
-
-    <div class="chip">
-      <span class="label">BEST</span>
-      <span class="value gold" id="best-value">0</span>
-    </div>
-  </header>
-
-  <!-- ========== Die Arena ========== -->
+  <!-- ========== Die Arena. Nimmt fast alles ein, so wie im Original,
+       wo das Cockpit nur ein schmaler Streifen unten ist. ========== -->
   <div class="stage">
     <canvas id="board"></canvas>
+
+    <!-- Namen und Gummi-Zahlen über den anderen Bikes -->
+    <div id="labels" class="labels"></div>
+
+    <!-- Die grosse Zahl mittig unten ist im Video das Tempo. -->
+    <div class="bigspeed"><span id="speed-value">20.0</span></div>
 
     <div id="overlay" class="overlay">
       <p class="title" id="overlay-title">TRON</p>
@@ -64,41 +43,60 @@
     </div>
   </div>
 
-  <!-- ========== Die drei Werte, die man beim Fahren liest ========== -->
-  <div class="meters">
-    <div class="meter">
-      <span class="name">RUBBER</span>
-      <span class="track"><i class="fill" id="rubber-bar" style="width:100%"></i></span>
-      <span class="num" id="rubber-value">0.0</span>
+  <!-- ========== Das Cockpit, Aufbau wie classic.aacockpit.xml ==========
+       Links der Punktestand, in der Mitte die drei Anzeigen in der
+       Reihenfolge Rubber – Speed – Brakes, rechts die Randinfos. -->
+  <div class="cockpit">
+
+    <div class="scores">
+      <span class="cap">Scores</span>
+      <span class="pair">Me: <b id="score-me">0</b></span>
+      <span class="pair">Top: <b id="score-top">0</b></span>
     </div>
-    <div class="meter">
-      <span class="name">SPEED</span>
-      <span class="track"><i class="fill" id="speed-bar" style="width:20%"></i></span>
-      <span class="num"><span id="speed-value">30</span></span>
+
+    <div class="gauges">
+      <div class="gauge">
+        <i class="lim">0</i>
+        <span class="track"><i class="fill" id="rubber-bar"></i></span>
+        <i class="lim" id="rubber-max">3</i>
+        <span class="cap">Rubber Used <b id="rubber-value">0.0</b></span>
+      </div>
+
+      <div class="gauge">
+        <i class="lim">0</i>
+        <span class="track"><i class="fill" id="speed-bar"></i></span>
+        <i class="lim" id="speed-max">100</i>
+        <span class="cap">Speed</span>
+      </div>
+
+      <div class="gauge">
+        <i class="lim">0</i>
+        <span class="track"><i class="fill" id="brake-bar"></i></span>
+        <i class="lim">1</i>
+        <span class="cap">Brakes <b id="brake-value">0</b></span>
+      </div>
     </div>
-    <div class="meter">
-      <span class="name">BRAKES</span>
-      <span class="track"><i class="fill" id="brake-bar" style="width:100%"></i></span>
-      <span class="num">&nbsp;</span>
+
+    <div class="info">
+      <span>Fastest: <b id="fastest">–</b></span>
+      <span>Enemies: <b id="enemies">0</b> Friends: <b id="friends">0</b></span>
+      <span class="mode" id="mode-label">Last Man Standing</span>
     </div>
   </div>
 
-  <!-- ========== Fahrerliste + Steuerung ========== -->
-  <footer>
-    <div class="roster" id="roster"></div>
-    <div class="keys">
-      <span><b>← →</b> drehen</span>
-      <span><b>↓</b> bremsen</span>
-      <span><b>Leertaste</b> Start &amp; weiter</span>
-      <span><b>C</b> Kamera</span>
-      <span><b>F</b> zuschauen</span>
-      <span><b>V</b> KI übernimmt</span>
-      <span><b>R</b> Neustart</span>
-    </div>
-  </footer>
+  <div class="keys">
+    <span><b>← →</b> drehen</span>
+    <span><b>↓</b> bremsen</span>
+    <span><b>Q E W</b> nach links/rechts/hinten schauen</span>
+    <span><b>C</b> Kamera: Bike / Drohne / Cockpit</span>
+    <span><b>F</b> zuschauen</span>
+    <span><b>M</b> Modus</span>
+    <span><b>V</b> KI übernimmt</span>
+    <span><b>R</b> Neustart</span>
+    <span><b>Leertaste</b> Start</span>
+  </div>
 
   <script type="module" src="src/main.js"></script>
-
   <script>
     window.addEventListener("error", (e) => {
       const scriptFehlt = e.target && e.target.tagName === "SCRIPT";

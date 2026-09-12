@@ -22,10 +22,15 @@ import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.j
 import { PALETTE, RULES } from "./config.js";
 
 /* Maße der Bühne, alles in Metern. */
-const WALL_H     = 4.0;     // Höhe einer Lichtmauer
-const WALL_THICK = 0.30;    // …und ihre Dicke. DAS ist die "dünne Linie".
-const EDGE_H     = 0.16;    // die helle Kante obendrauf
-const RIM_H      = 5.0;     // die Aussenmauer
+/* Nach den Bildern aus dem Video korrigiert. Die Wände dort sind
+   NIEDRIGE, DECKENDE Bänder mit sichtbarer Oberseite — keine hohen
+   Glasscheiben. Man sieht die Oberseite hell und die Flanke dunkler,
+   das kommt vom Licht, nicht von einem Verlauf. */
+const WALL_H     = 1.15;    // niedrig! vorher 5,0 — das war der Hauptfehler
+const WALL_THICK = 0.30;    // dünn. 0,55 war noch zu dick.
+const EDGE_H     = 0.06;    // die helle Kante obendrauf
+const RIM_H      = 6.5;     // die Aussenmauer — im Original das helle
+                            // Band am Horizont
 const BIKE_SCALE = 1.7;     // Modell ist ~1,2 Einheiten lang → ~2 m
 const MAX_SEGS   = 4000;    // Vorrat an Wand-Instanzen
 /* ==================================================================
@@ -125,6 +130,55 @@ export function buildBike(colorHex) {
   return { yaw, lean, lamp, neon };
 }
 
+/* Die Lichtmauer-Textur. Im gekauften Spiel heisst sie dir_wall.png:
+   ein graues Feld mit einem weissen Blitz-Zickzack, der sich über die
+   Wand wiederholt. Daher die hellen Schrägstreifen auf den Wänden in
+   den Bildern aus dem Video. Hier nachgemalt statt kopiert — die Datei
+   gehört zum gekauften Spiel und hat in diesem Projekt nichts zu
+   suchen. */
+let wallTexCache = null;
+function wallTexture() {
+  if (wallTexCache) return wallTexCache;
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const g = c.getContext("2d");
+  g.fillStyle = "#8a8a8a";                 // Grundton, wird eingefärbt
+  g.fillRect(0, 0, 64, 64);
+  g.strokeStyle = "#ffffff";
+  g.lineWidth = 4;
+  g.lineCap = "round";
+  g.lineJoin = "round";
+  g.beginPath();                           // der Blitz
+  g.moveTo(60, 0); g.lineTo(34, 30); g.lineTo(44, 36);
+  g.lineTo(18, 64);
+  g.stroke();
+  wallTexCache = new THREE.CanvasTexture(c);
+  wallTexCache.wrapS = wallTexCache.wrapT = THREE.RepeatWrapping;
+  return wallTexCache;
+}
+
+/* Die Streifen der Aussenmauer, als kleine Textur selbst gemalt —
+   kein Download, kein Bild im Projekt. */
+let stripeCache = null;
+function stripeTexture() {
+  if (stripeCache) return stripeCache;
+  const c = document.createElement("canvas");
+  c.width = 64; c.height = 8;
+  const g = c.getContext("2d");
+  g.fillStyle = "#060a18";
+  g.fillRect(0, 0, 64, 8);
+  for (let i = 0; i < 64; i += 8) {
+    // Aus der Ferne ein helles Band, von nahem nicht blendend.
+    g.fillStyle = i % 16 === 0 ? "#9fb0d8" : "#46578a";
+    g.fillRect(i, 0, 3, 8);
+  }
+  stripeCache = new THREE.CanvasTexture(c);
+  stripeCache.wrapS = stripeCache.wrapT = THREE.RepeatWrapping;
+  stripeCache.magFilter = THREE.LinearFilter;
+  return stripeCache;
+}
+
+
 /* ==================================================================
    DIE BÜHNE
    ================================================================== */
@@ -142,16 +196,18 @@ export function createRenderer(canvas) {
 
   const camera = new THREE.PerspectiveCamera(62, 1, 0.4, 1200);
 
-  scene.add(new THREE.HemisphereLight(0x4466ff, 0x05070f, 0.5));
-  const key = new THREE.DirectionalLight(0x9fd0ff, 0.45);
-  key.position.set(60, 180, 100);
+  /* Licht fast senkrecht von oben: dadurch ist die Oberseite jeder Wand
+     hell und die Flanke dunkel — der Look aus dem Video. */
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const key = new THREE.DirectionalLight(0xffffff, 1.5);
+  key.position.set(30, 300, 60);
   scene.add(key);
 
   /* Bloom: das Leuchten. Ohne diesen Pass sieht Neon aus wie bunte
      Klötzchen, mit ihm wie Licht. */
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.5, 0.8, 0.3);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.34, 0.9, 0.55);
   composer.addPass(bloom);
 
   const board = new THREE.Group();
@@ -159,10 +215,22 @@ export function createRenderer(canvas) {
 
   const dummy = new THREE.Object3D();
   const tmpColor = new THREE.Color();
+  const edgeColor = new THREE.Color();
 
   let game = null;
   let stage = null;              // alles, was pro Runde neu entsteht
-  let mode = "chase";            // "chase" | "top"
+  /* DREI KAMERAS, mit C der Reihe nach:
+       "bike"   hinter und über dem eigenen Bike, Blick schräg nach
+                unten — die Werte dafür stehen in settings_visual.cfg
+                (CAMERA_CUSTOM_*) und das ist die Standardansicht
+       "drone"  senkrecht von weit oben auf das eigene Bike. Damit sieht
+                man das ganze Labyrinth und kann Spielzüge planen.
+       "cockpit" sitzt am Bike selbst (Ich-Perspektive)
+     Dazu Glance: kurz nach links, rechts oder hinten schauen, solange
+     die Taste gehalten wird. */
+  const MODES = ["bike", "drone", "cockpit"];
+  let mode = "bike";
+  let glance = 0;                // 0 = nach vorn, 1 = links, -1 = rechts, 2 = hinten
   let followId = 0;              // wem die Kamera folgt (0 = erstes Bike)
   let shake = 0;
   let clock = 0;
@@ -189,33 +257,42 @@ export function createRenderer(canvas) {
     /* --- Boden ---------------------------------------------------- */
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(A, A),
-      new THREE.MeshStandardMaterial({
-        color: PALETTE.FLOOR, metalness: 0.4, roughness: 0.6,
-        emissive: 0x060c20, emissiveIntensity: 1,
-      })
+      new THREE.MeshBasicMaterial({ color: 0x000000 })
     );
     floor.rotation.x = -Math.PI / 2;
     group.add(floor);
 
     /* Das Gitter auf dem Boden. Zehn Meter Raster — es gibt dem Auge
        einen Maßstab für Tempo, sonst merkt man 90 m/s nicht. */
-    const grid = new THREE.GridHelper(A, Math.round(A / 10), 0x2a4890, 0x1b2f66);
+    /* Der Boden. floor.png im gekauften Spiel ist SCHWARZ mit einer
+       dünnen hellen Kante — also eine Kachel mit angedeutetem Gitter.
+       Genau so: fast schwarz, mit einer kaum sichtbaren Linie alle
+       20 m. In den Bildern aus dem Video sieht man davon fast nichts. */
+    const grid = new THREE.GridHelper(A, Math.round(A / 20), 0x101a33, 0x0a1226);
     grid.position.y = 0.02;
     grid.material.transparent = true;
-    grid.material.opacity = 0.85;
+    grid.material.opacity = 0.7;
     group.add(grid);
 
     /* --- Aussenmauer ---------------------------------------------- */
+    /* Im Original ist das kein blauer Block, sondern ein helles Band mit
+       feinen senkrechten Streifen — man sieht daran, wie schnell man
+       daran vorbeifährt. Die Streifen sind eine winzige Textur, die in
+       Fahrtrichtung wiederholt wird. */
     const rimMat = new THREE.MeshBasicMaterial({
-      color: PALETTE.RIM, transparent: true, opacity: 0.32,
-      side: THREE.DoubleSide, toneMapped: false,
+      map: stripeTexture(), transparent: true, opacity: 0.34,
+      side: THREE.DoubleSide, toneMapped: false, depthWrite: false,
     });
     const half = A / 2;
-    for (const [w, d, x, z] of [
-      [A, WALL_THICK, 0, -half], [A, WALL_THICK, 0, half],
-      [WALL_THICK, A, -half, 0], [WALL_THICK, A, half, 0],
+    for (const [w, d, x, z, rep] of [
+      [A, WALL_THICK, 0, -half, A / 8], [A, WALL_THICK, 0, half, A / 8],
+      [WALL_THICK, A, -half, 0, A / 8], [WALL_THICK, A, half, 0, A / 8],
     ]) {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, RIM_H, d), rimMat);
+      const mat = rimMat.clone();
+      mat.map = rimMat.map.clone();
+      mat.map.needsUpdate = true;
+      mat.map.repeat.set(rep, 1);
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, RIM_H, d), mat);
       m.position.set(x, RIM_H / 2, z);
       group.add(m);
     }
@@ -223,17 +300,14 @@ export function createRenderer(canvas) {
     /* --- Lichtmauern ---------------------------------------------- */
     /* Zwei Instanz-Netze: der durchscheinende Körper und die helle
        Kante obendrauf. Beide werden jeden Frame neu belegt. */
-    /* WICHTIG: unbeleuchtetes Material. setColorAt() setzt die
-       DIFFUS-Farbe — in einer Szene, die fast nur aus Eigenleuchten
-       besteht, wäre eine Wand damit schwarz. MeshBasicMaterial
-       ignoriert Licht und zeigt genau die gesetzte Farbe, und der
-       Bloom-Pass macht daraus das Glühen. */
+    /* BELEUCHTET und deckend. Genau daher kommt der Look im Video:
+       die Oberseite fängt das Licht von oben, die Flanken bleiben
+       dunkler — eine Wand sieht dadurch wie ein Körper aus und nicht
+       wie eine Folie. (Vorher unbeleuchtet und durchscheinend, mit
+       einem Verlauf: das war der zweite Hauptfehler.) */
     const wallBody = new THREE.InstancedMesh(
       new THREE.BoxGeometry(1, 1, 1),
-      new THREE.MeshBasicMaterial({
-        transparent: true, opacity: 0.30, depthWrite: false,
-        side: THREE.DoubleSide, toneMapped: false,
-      }),
+      new THREE.MeshLambertMaterial({ side: THREE.FrontSide, map: wallTexture() }),
       MAX_SEGS
     );
     const wallEdge = new THREE.InstancedMesh(
@@ -248,32 +322,70 @@ export function createRenderer(canvas) {
       group.add(m);
     }
 
-    /* --- Die Todeszone -------------------------------------------- */
-    const zone = new THREE.Mesh(
-      new THREE.CylinderGeometry(1, 1, 3.2, 48, 1, true),
-      new THREE.MeshBasicMaterial({
-        color: 0xff2d55, transparent: true, opacity: 0.5,
-        side: THREE.DoubleSide, toneMapped: false,
-      })
-    );
-    zone.visible = false;
-    group.add(zone);
+    /* --- Zonen ---------------------------------------------------- */
+    /* Die Win-Zone ist ein ZIEL, kein Hindernis — deshalb grün und
+       einladend, nicht rot. Die Fortress-Zonen tragen die Teamfarbe und
+       zeigen mit einer Bodenscheibe, wie weit sie erobert sind. */
+    const mkZone = (color) => {
+      const g2 = new THREE.Group();
+      const wall = new THREE.Mesh(
+        new THREE.CylinderGeometry(1, 1, RULES.ZONE_HEIGHT, 48, 1, true),
+        new THREE.MeshBasicMaterial({
+          color, transparent: true, opacity: 0.28,
+          side: THREE.DoubleSide, toneMapped: false,
+        })
+      );
+      wall.position.y = RULES.ZONE_HEIGHT / 2;
+      g2.add(wall);
+      const disc = new THREE.Mesh(
+        new THREE.CircleGeometry(1, 48),
+        new THREE.MeshBasicMaterial({
+          color, transparent: true, opacity: 0.22, toneMapped: false,
+        })
+      );
+      disc.rotation.x = -Math.PI / 2;
+      disc.position.y = 0.06;
+      g2.add(disc);
+      g2.visible = false;
+      group.add(g2);
+      return { group: g2, wall, disc };
+    };
+
+    const winZone = mkZone(PALETTE.ZONE_WIN);
+    const teamZones = (game.zones || []).map((z) =>
+      mkZone(PALETTE.TEAM[z.team % PALETTE.TEAM.length]));
 
     /* --- Die Bikes ------------------------------------------------ */
     const bikes = game.cycles.map((c) => {
       const b = buildBike(c.color);
       b.yaw.scale.setScalar(BIKE_SCALE);
+      /* Das Lämpchen am Bike RAUS. Bei 16 Fahrern hängen sonst 16
+         Punktlichter in der Szene, und seit die Wände beleuchtet sind,
+         rechnet jeder Wand-Pixel alle 16 durch. Im Video leuchten die
+         Bikes den Boden auch nicht an — der ist schwarz. */
+      if (b.lamp && b.lamp.parent) b.lamp.parent.remove(b.lamp);
       group.add(b.yaw);
       return b;
     });
 
     /* --- Explosionssplitter --------------------------------------- */
+    /* EIN Material pro Fahrerfarbe, nicht eines pro Splitter. Bei 16
+       Fahrern und 26 Splittern pro Explosion wären das sonst hunderte
+       Materialien in wenigen Sekunden — jedes davon Arbeit für den
+       Browser und Müll für die Speicherbereinigung. */
     const shardGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+    const shardMats = new Map();
+    for (const c of game.cycles) {
+      shardMats.set(c.color, new THREE.MeshBasicMaterial({
+        color: c.color, toneMapped: false, transparent: true,
+      }));
+    }
     const shards = [];
     const waves = [];
 
     board.add(group);
-    stage = { group, wallBody, wallEdge, zone, bikes, shardGeo, shards, waves };
+    stage = { group, wallBody, wallEdge, winZone, teamZones, bikes,
+              shardGeo, shardMats, shards, waves };
   }
 
 
@@ -289,16 +401,26 @@ export function createRenderer(canvas) {
     const { wallBody, wallEdge } = stage;
     let n = 0;
 
+    /* Immer die echte Dicke. Die künstliche Verbreiterung für die
+       Draufsicht ist weggefallen, seit die Übersicht schräg schaut: aus
+       einem flachen Winkel zeigt jede Wand ihre Höhe und ist dadurch von
+       selbst sichtbar. */
+    const thick = WALL_THICK;
+
     for (const c of game.cycles) {
-      tmpColor.setHex(c.color);
+      /* Der Körper etwas gedeckter, die Oberkante voll: im Video sind die
+         Wände dunkelrot und olivgrün, nicht neonbunt. Der helle Streifen
+         obendrauf macht den Kontrast. */
+      tmpColor.setHex(c.color).multiplyScalar(0.62);
+      edgeColor.setHex(c.color);
       for (const s of c.walls) {
         const len = Math.abs(s.x2 - s.x1) + Math.abs(s.y2 - s.y1);
         if (len < 0.02 || n >= MAX_SEGS) continue;
 
         const mx = wx((s.x1 + s.x2) / 2);
         const mz = wz((s.y1 + s.y2) / 2);
-        const sx = s.horiz ? len : WALL_THICK;
-        const sz = s.horiz ? WALL_THICK : len;
+        const sx = s.horiz ? len : thick;
+        const sz = s.horiz ? thick : len;
 
         dummy.position.set(mx, WALL_H / 2, mz);
         dummy.scale.set(sx, WALL_H, sz);
@@ -307,10 +429,10 @@ export function createRenderer(canvas) {
         wallBody.setColorAt(n, tmpColor);
 
         dummy.position.set(mx, WALL_H + EDGE_H / 2, mz);
-        dummy.scale.set(sx, EDGE_H, sz);
+        dummy.scale.set(sx, EDGE_H, sz * 1.05);
         dummy.updateMatrix();
         wallEdge.setMatrixAt(n, dummy.matrix);
-        wallEdge.setColorAt(n, tmpColor);
+        wallEdge.setColorAt(n, edgeColor);
 
         n++;
       }
@@ -330,10 +452,13 @@ export function createRenderer(canvas) {
   function explode(cycle) {
     const x = wx(cycle.x), z = wz(cycle.y);
 
-    for (let i = 0; i < 26; i++) {
-      const m = new THREE.Mesh(stage.shardGeo, new THREE.MeshBasicMaterial({
-        color: cycle.color, toneMapped: false, transparent: true,
-      }));
+    /* Nicht mehr als ein paar Explosionen gleichzeitig — bei 16 Fahrern
+       stirbt gern die halbe Arena im selben Moment. */
+    if (stage.shards.length > 200) return;
+    const mat = stage.shardMats.get(cycle.color);
+
+    for (let i = 0; i < 18; i++) {
+      const m = new THREE.Mesh(stage.shardGeo, mat);
       m.position.set(x, 1.2, z);
       const a = Math.random() * Math.PI * 2;
       const up = 6 + Math.random() * 14;
@@ -348,7 +473,7 @@ export function createRenderer(canvas) {
     }
 
     const wave = new THREE.Mesh(
-      new THREE.RingGeometry(0.6, 1.0, 40),
+      new THREE.RingGeometry(0.6, 1.0, 32),
       new THREE.MeshBasicMaterial({
         color: cycle.color, transparent: true, side: THREE.DoubleSide,
         toneMapped: false,
@@ -379,6 +504,7 @@ export function createRenderer(canvas) {
   ];
   const YAW = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
 
+  const fovMul = { x: 1, y: 0.6 };     // Tangens der halben Öffnungswinkel
   const eye = new THREE.Vector3();
   const aim = new THREE.Vector3();
   let eyeSmooth = null, aimSmooth = null;
@@ -393,35 +519,87 @@ export function createRenderer(canvas) {
   }
 
   function placeCamera(dt) {
-    const A = game.arena;
-
-    if (mode === "top") {
-      camera.fov = 45;
-      camera.position.set(0, A * 0.95, A * 0.62);
-      camera.lookAt(0, 0, 0);
-      camera.updateProjectionMatrix();
-      return;
-    }
-
     const c = followed();
     if (!c) return;
 
+    /* Blickrichtung = Fahrtrichtung, um den Glance gedreht. */
+    const viewDir = glance === 0 ? c.dir
+      : glance === 1 ? (c.dir + 1) % 4
+      : glance === -1 ? (c.dir + 3) % 4
+      : (c.dir + 2) % 4;
+
     const dir = AXIS_VEC[c.dir];
-    const speedT = Math.min((c.speed - RULES.SPEED) / 60, 1.2);
+    const vd = AXIS_VEC[viewDir];
+    const speedT = Math.min((c.speed - RULES.SPEED) / 40, 1.5);
 
-    /* Hoch genug, um ÜBER der eigenen Wand zu sitzen — die läuft ja
-       vom Bike aus nach hinten, also genau durch die Kamera. Zu tief
-       und man schaut die eigene Wand von innen an. */
-    const back = 17 + speedT * 6;
-    const high = 9.5 + speedT * 1.5;
-    const ahead = 26 + speedT * 26;
+    if (mode === "drone") {
+      /* ÜBERSICHT: schräg von hinten-oben, und sie FÄHRT MIT.
 
-    eye.set(wx(c.x) - dir.x * back, high, wz(c.y) - dir.z * back);
-    aim.set(wx(c.x) + dir.x * ahead, 0.8, wz(c.y) + dir.z * ahead);
+         Vorher stand sie senkrecht über der Arenamitte und rührte sich
+         nicht. Zwei Probleme: von ganz oben ist eine 30 cm dünne Wand
+         schmaler als ein Bildschirmpunkt (ich musste die Wände künstlich
+         verbreitern, damit überhaupt etwas zu sehen war), und man verlor
+         den Bezug zum eigenen Bike.
+
+         Schräg gelöst beides: die Wände zeigen ihre Höhe und sind damit
+         von selbst sichtbar, und weil die Kamera weit hinten und hoch
+         hängt, sieht man trotzdem ein grosses Stück Feld. Das eigene
+         Bike sitzt im unteren Drittel — vor einem liegt also das meiste. */
+      const back = RULES.CAM_DRONE_BACK + RULES.CAM_DRONE_BACK_SPEED * c.speed;
+      const high = RULES.CAM_DRONE_HIGH + RULES.CAM_DRONE_HIGH_SPEED * c.speed;
+      const ahead = RULES.CAM_DRONE_AHEAD;
+
+      camera.up.set(0, 1, 0);
+      eye.set(wx(c.x) - dir.x * back, high, wz(c.y) - dir.z * back);
+      aim.set(wx(c.x) + vd.x * ahead, 0, wz(c.y) + vd.z * ahead);
+    } else if (mode === "cockpit") {
+      camera.up.set(0, 1, 0);
+      /* Ich-Perspektive: knapp über dem Bike, Blick nach vorn. Damit
+         sieht man die eigene Wand gar nicht — dafür ist Glance da. */
+      eye.set(wx(c.x) + dir.x * 0.4, 1.2, wz(c.y) + dir.z * 0.4);
+      aim.set(wx(c.x) + vd.x * 40, 1.2, wz(c.y) + vd.z * 40);
+    } else {
+      /* Smart: hinter dem Bike, hoch genug, um ÜBER der eigenen Wand zu
+         sitzen — die läuft vom Bike aus nach hinten, also genau durch
+         die Kamera. Zu tief und man schaut sie von innen an. */
+      /* DIE ECHTEN WERTE, aus settings_visual.cfg des gekauften Spiels:
+
+           CAMERA_CUSTOM_BACK            6     + 0.5 je m/s
+           CAMERA_CUSTOM_RISE            4     + 0.4 je m/s
+           CAMERA_CUSTOM_PITCH          -0.58  (Bogenmass, also −33°)
+
+         Entscheidend ist der FESTE Neigungswinkel: die Kamera schaut
+         immer gleich steil nach unten. Ich hatte stattdessen auf einen
+         Punkt vor dem Bike gezielt — dadurch änderte sich die Neigung
+         ständig mit Tempo und Abstand, und es sah nie richtig aus.
+         Und Abstand UND Höhe wachsen mit dem Tempo: bei 30 m/s sind das
+         21 m hinter und 16 m über dem Bike, bei 60 m/s 36 und 28. */
+      const back = RULES.CAM_BACK + RULES.CAM_BACK_SPEED * c.speed;
+      const high = RULES.CAM_RISE + RULES.CAM_RISE_SPEED * c.speed;
+      eye.set(wx(c.x) - dir.x * back, high, wz(c.y) - dir.z * back);
+
+      /* Blickrichtung. Im Original steht das so:
+
+             gluLookAt(0,0,0,  dir.x, dir.y, rise,  top.x, top.y, 1)
+
+         rise ist also die SENKRECHTE KOMPONENTE des Blickvektors, dessen
+         waagerechter Teil die Länge 1 hat — eine Steigung, kein Winkel.
+         CAMERA_CUSTOM_PITCH -0.58 heisst damit atan(0,58) = 30,1° nach
+         unten, nicht 33°. Ich hatte es als Bogenmass gerechnet. */
+      const L = 40;
+      aim.set(
+        eye.x + vd.x * L,
+        eye.y + RULES.CAM_PITCH * L,
+        eye.z + vd.z * L
+      );
+    }
 
     if (!eyeSmooth) { eyeSmooth = eye.clone(); aimSmooth = aim.clone(); }
     // Nachziehen, aber schnell genug, dass eine Kurve nicht schmiert.
-    const k = 1 - Math.pow(0.0025, dt);
+    // In der Draufsicht fast gar nicht, sonst schwimmt das ganze Bild.
+    /* Die Übersicht zieht ruhiger nach als die Bike-Kamera — bei der
+       Höhe würde jede Kurve sonst das halbe Bild herumreissen. */
+    const k = 1 - Math.pow(mode === "drone" ? 0.08 : 0.0025, dt);
     eyeSmooth.lerp(eye, k);
     aimSmooth.lerp(aim, k);
 
@@ -431,7 +609,9 @@ export function createRenderer(canvas) {
       camera.position.y += (Math.random() - 0.5) * shake * 1.0;
     }
     camera.lookAt(aimSmooth);
-    camera.fov = 62 + speedT * 12;
+    /* Das Sichtfeld öffnet sich mit dem Tempo. Billigster und
+       wirksamster Trick, damit 50 m/s auch nach 50 m/s aussehen. */
+    camera.fov = (mode === "cycle" ? 78 : 56) + speedT * 10;
     camera.updateProjectionMatrix();
   }
 
@@ -476,18 +656,33 @@ export function createRenderer(canvas) {
         b.neon.emissiveIntensity = 2.6;
         b.neon.color.setHex(c.color);
       }
-      b.lamp.intensity = 2.2 + Math.min(c.speed / RULES.SPEED - 1, 2) * 1.5;
+      // (kein Lämpchen mehr, siehe buildStage)
     });
 
-    /* --- Todeszone ------------------------------------------------ */
-    const z = game.zone;
-    stage.zone.visible = z.active && z.r > 0.5;
-    if (stage.zone.visible) {
-      stage.zone.position.set(wx(z.x), 1.6, wz(z.y));
-      stage.zone.scale.set(z.r, 1 + 0.08 * Math.sin(clock * 6), z.r);
-      stage.zone.rotation.y = clock * 0.6;
-      stage.zone.material.opacity = 0.35 + 0.15 * Math.sin(clock * 5);
+    /* --- Zonen ---------------------------------------------------- */
+    const wz2 = game.winZone;
+    stage.winZone.group.visible = wz2.active && wz2.r > 0.5;
+    if (stage.winZone.group.visible) {
+      stage.winZone.group.position.set(wx(wz2.x), 0, wz(wz2.y));
+      stage.winZone.wall.scale.set(wz2.r, 1, wz2.r);
+      stage.winZone.disc.scale.setScalar(wz2.r);
+      stage.winZone.wall.material.opacity = 0.22 + 0.12 * Math.sin(clock * 4);
+      stage.winZone.group.rotation.y = clock * 0.4;
     }
+
+    game.zones.forEach((z, i) => {
+      const v = stage.teamZones[i];
+      if (!v) return;
+      v.group.visible = !z.conquered;
+      v.group.position.set(wx(z.x), 0, wz(z.y));
+      v.wall.scale.set(z.r, 1, z.r);
+      // Die Bodenscheibe wächst mit dem Eroberungsstand: man SIEHT,
+      // wie die eigene Festung fällt.
+      v.disc.scale.setScalar(Math.max(0.001, z.r * z.conquest));
+      v.disc.material.opacity = 0.25 + 0.5 * z.conquest;
+      v.wall.material.opacity = 0.2 + 0.25 * z.conquest
+        + (z.inside.attackers ? 0.1 * Math.sin(clock * 12) : 0);
+    });
 
     /* --- Splitter ------------------------------------------------- */
     for (let i = stage.shards.length - 1; i >= 0; i--) {
@@ -499,8 +694,9 @@ export function createRenderer(canvas) {
       if (s.mesh.position.y < 0.2) { s.mesh.position.y = 0.2; s.v.y *= -0.4; s.v.multiplyScalar(0.7); }
       s.mesh.rotation.x += s.spin.x * dt;
       s.mesh.rotation.y += s.spin.y * dt;
-      s.mesh.material.opacity = Math.max(0, s.life);
-      s.mesh.scale.setScalar(0.6 + s.life * 0.8);
+      // Das Material ist geteilt, also darf die Deckkraft nicht pro
+      // Splitter geändert werden — dafür schrumpfen sie.
+      s.mesh.scale.setScalar(Math.max(0.01, s.life * 1.2));
     }
 
     /* --- Druckwellen ---------------------------------------------- */
@@ -527,6 +723,32 @@ export function createRenderer(canvas) {
     return canvas.clientWidth > 0 && canvas.clientHeight > 0;
   }
 
+  /* DAS SICHTFELD — der grösste einzelne Fehler an meiner Kamera.
+     Im Original ist START_FOV = 90, und zwar WAAGERECHT ("usually, fov is
+     the horizontal fov"). Three.js will den senkrechten Wert. Die
+     Umrechnung steht im Original so:
+
+         ensureVertical = max(aspect / 1.5, 1)     // Breitbild bekommt mehr
+         xmul = ensureVertical * tan(fov/2)
+         ymul = xmul / aspect                       // senkrechte Hälfte
+
+     Ich bin mit 56° gefahren. Bei 90° sieht man von derselben Stelle ein
+     Vielfaches des Feldes — DAS ist der Grund, warum in den Bildern aus
+     dem Video ein ganzes Labyrinth auf den Schirm passt, obwohl die
+     Kamera nur 16 m über dem Bike hängt. */
+  function setFov() {
+    const aspect = camera.aspect || 1;
+    const ensureVertical = Math.max(aspect / 1.5, 1);
+    const xmul = ensureVertical * Math.tan((Math.PI / 360) * RULES.FOV);
+    const ymul = xmul / aspect;
+    fovMul.x = xmul; fovMul.y = ymul;
+    const fov = 2 * Math.atan(ymul) * 180 / Math.PI;
+    if (Math.abs(camera.fov - fov) > 0.01) {
+      camera.fov = fov;
+      camera.updateProjectionMatrix();
+    }
+  }
+
   function resize() {
     if (!hasSize()) return;
     const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -537,7 +759,7 @@ export function createRenderer(canvas) {
     composer.setSize(w, h);
     bloom.setSize(w, h);
     camera.aspect = w / h;
-    camera.updateProjectionMatrix();
+    setFov();
   }
 
   function setGame(next) {
@@ -548,13 +770,32 @@ export function createRenderer(canvas) {
   }
 
   function follow(cycleId) { followId = cycleId | 0; eyeSmooth = null; }
-  function setMode(next) { mode = next === "top" ? "top" : "chase"; eyeSmooth = null; }
-  function toggleMode() { setMode(mode === "top" ? "chase" : "top"); return mode; }
+  function setMode(next) {
+    mode = MODES.includes(next) ? next : "bike";
+    eyeSmooth = null;
+  }
+  function toggleMode() {
+    setMode(MODES[(MODES.indexOf(mode) + 1) % MODES.length]);
+    return mode;
+  }
+  function setGlance(g) { glance = g | 0; }
+
+  /* Welt → Bildschirm, für die Namen und Gummi-Zahlen über den Bikes.
+     Das Original zeigt genau das: kleine Zahlen an den anderen Fahrern. */
+  function project(x, y, height = 2.2) {
+    const v = new THREE.Vector3(wx(x), height, wz(y)).project(camera);
+    return {
+      x: (v.x * 0.5 + 0.5) * canvas.clientWidth,
+      y: (-v.y * 0.5 + 0.5) * canvas.clientHeight,
+      visible: v.z < 1 && v.x > -1.2 && v.x < 1.2 && v.y > -1.2 && v.y < 1.2,
+    };
+  }
 
   return {
     setGame, render, resize, explode,
-    follow, setMode, toggleMode,
+    follow, setMode, toggleMode, setGlance, project,
     get mode() { return mode; },
+    get followId() { const c = followed(); return c ? c.id : 0; },
     scene, camera,
   };
 }

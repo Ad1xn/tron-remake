@@ -60,10 +60,13 @@ export function createRecorder(game, meta = {}) {
     ...meta,                                   // label, generation, was du willst
     seed: game.seed,
     arena: game.arena,
+    mode: game.mode,           // sonst spielt ein Fortress-Band als LMS
+                               // nach und läuft sofort auseinander
     riders: game.cycles.map((c) => ({
       id: c.id,
       name: c.name,
       color: c.color,
+      team: c.team,
       agent: c.driver.fn ? (c.driver.agent || "fn") : (c.driver.agent || c.driver.type),
     })),
     ticks: [],
@@ -109,10 +112,13 @@ export function tapeToGame(tape) {
   const riders = tape.riders.map((r, i) => ({
     name: r.name,
     color: r.color,
+    team: r.team,
     driver: { type: "agent", agent: r.agent, fn: tapeDriver(tape, i) },
   }));
 
-  return createGame({ riders, seed: tape.seed, arena: tape.arena });
+  return createGame({
+    riders, seed: tape.seed, arena: tape.arena, mode: tape.mode || "lms",
+  });
 }
 
 /* Ein Fahrer, der nur nachschlägt. game.tick zählt erst in step() hoch —
