@@ -58,7 +58,7 @@ const shown = () => {
    "Offline singleplayer against bots". Die Bots werden aus der Leiter
    in agents.js gemischt, damit nicht alle gleich fahren.
    ------------------------------------------------------------------ */
-const LADDER = ["grinder", "hunter", "cruiser", "rookie"];
+let LADDER = ["grinder", "hunter", "cruiser", "rookie"];
 
 function buildRoster() {
   const riders = [];
@@ -68,7 +68,11 @@ function buildRoster() {
     const bot = LADDER[i % LADDER.length];
     const team = i % 2;
     riders.push({
-      name: i < humans ? "DU" : BOT_NAMES[i % BOT_NAMES.length],
+      /* Ein trainiertes Netz heisst NETZ und nicht wie ein Bot — beim
+         Zusehen will man auf einen Blick wissen, welches Bike es ist. */
+      name: i < humans ? "DU"
+        : bot === "netz" ? "NETZ"
+        : BOT_NAMES[i % BOT_NAMES.length],
       /* Im Fortress trägt jeder die TEAMFARBE — man muss auf einen Blick
          sehen, wer zu wem gehört. Nur im Alle-gegen-alle bekommt jeder
          seine eigene. */
@@ -267,7 +271,32 @@ window.addEventListener("resize", () => view.resize());
    des Cockpit-Markups. Die ist beim Umbau von hud.js und style.css
    stillschweigend kaputtgegangen, weil niemand zwei Kopien gleichzeitig
    pflegt. Darum jetzt hier. */
-const replayDir = new URLSearchParams(location.search).get("replay");
+const suche = new URLSearchParams(location.search);
+
+/* EIN TRAINIERTES NETZ MITFAHREN LASSEN
+
+       index.html?netz=out/netz-hunter.json
+
+   Geschrieben hat die Datei tools/train.mjs. Dass sie hier ohne Umbau
+   läuft, ist kein Zufall: src/net.js benutzt dieselben encodeSensors()
+   aus features.js wie das Training, und die prüft tools/features-check
+   gegen den observe()-Weg. Sähe das Netz im Browser andere Zahlen als
+   beim Lernen, fiele es genau dort auf. */
+const netzPfad = suche.get("netz");
+if (netzPfad) {
+  try {
+    const { ladeNetz, netzAgent } = await import("./net.js");
+    const json = await (await fetch(netzPfad, { cache: "no-store" })).json();
+    AGENTS.netz = netzAgent(ladeNetz(json), { name: "netz" });
+    LADDER = ["netz", ...LADDER];
+    console.log("Netz geladen:", netzPfad, json.lehrer ? "(ahmt " + json.lehrer + " nach)" : "");
+  } catch (err) {
+    /* Lieber ohne Netz weiterspielen als eine schwarze Seite zeigen. */
+    console.warn("Netz konnte nicht geladen werden:", err.message);
+  }
+}
+
+const replayDir = suche.get("replay");
 
 if (replayDir !== null) {
   const { startPlayback } = await import("./playback.js");

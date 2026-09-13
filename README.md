@@ -96,10 +96,12 @@ dem Originalnamen aus `settings.cfg` daneben.
 | `src/render3d.js` | Die 3D-Bühne: Arena, Wände, Bike-Modell, Bloom, Kamera |
 | `src/input.js` | Tastatur; Kurven sind Ereignisse, nicht Zustände |
 | `src/hud.js` | Rubber, Speed, Brakes, Punkte, Overlay |
-| `src/main.js` | Steckt alle Teile zusammen, hält die Spielschleife, verzweigt auf `?replay` |
+| `src/main.js` | Steckt alle Teile zusammen, hält die Spielschleife, verzweigt auf `?replay` und `?netz` |
 | `src/playback.js` | Der Zuschauerraum für Bänder — hängt an derselben Seite |
+| `src/net.js` | Das Netz: Vorwärtsrechnung, Laden, und als Agent. Node *und* Browser |
 | `tools/serve.py` | Entwicklungs-Server ohne Zwischenspeicher |
 | `tools/selfplay.mjs` | Matches ohne Browser: Agenten vergleichen, Daten sammeln |
+| `tools/train.mjs` | Nachahmungslernen: sammeln, lernen, antreten (siehe unten) |
 | `tools/features-check.mjs` | Prüft die Wahrnehmung der KI (siehe unten) |
 | `tools/bike-preview.html` | Das Bike-Modell gross und drehbar |
 | `legacy/` | Die Vorgänger: 2D in einer Datei, und das komplette Raster-Tron |
@@ -300,11 +302,65 @@ steht konstant auf 1, weil **kein einziger** der vier Bots je bremst. Der
 Prüfer bleibt absichtlich laut — sonst verdeckt er den Tag, an dem eine
 Konstante ein echter Fehler ist.
 
+## Ein Netz trainieren: `tools/train.mjs`
+
+```bash
+node tools/train.mjs --matches 60 --epochs 40 --out out/netz-hunter.json
+```
+
+Nachahmen, nicht Verstärkungslernen — und das ist Absicht. Hier soll noch
+kein gutes Netz entstehen, sondern bewiesen werden, dass die Kette geschlossen
+ist: Matches fahren → Sensoren aus `features.js` → lernen → als Agent
+mitfahren → im selben Messstand gemessen werden. Jede dieser Nahtstellen kann
+still kaputt sein, und beim Verstärkungslernen merkt man es nach Stunden statt
+nach Sekunden.
+
+Das Netz ist absichtlich winzig: 16 → 24 → 3, **483 Parameter**, eine verdeckte
+Schicht, keine Bibliothek. Ein Durchlauf mit 60 Matches dauert etwa 15 Sekunden.
+
+Zwei Zahlen, auf die es dabei ankommt:
+
+- **Treffergenauigkeit lügt hier.** 90 % aller Züge sind „geradeaus" — wer
+  nichts anderes sagt, hat 90 % recht und fährt in die erste Wand. Gemessen
+  wird die **ausgewogene** Genauigkeit, der Mittelwert der drei Trefferquoten
+  je Klasse. Zufall und Immer-geradeaus liegen beide bei 33 %.
+- **Geteilt wird nach Matches, nicht nach Zeilen.** Aufeinanderfolgende Züge
+  sind sich fast gleich; bei zufälliger Zeilen-Teilung stünde zu fast jedem
+  Prüfzug ein fast identischer Lernzug, und die Prüfzahl wäre geschönt.
+
+Ein Lauf mit `--matches 60 --epochs 40`, `hunter` nachgeahmt:
+
+```
+  ausgewogen   87,8 % (Lernen)   87,4 % (Prüfen)      Zufall 33 %
+
+  GEGNER        SIEGE NETZ       %
+  rookie                  26    86.7
+  grinder                 20    66.7
+  hunter                   9    30.0
+  cruiser                  8    26.7
+```
+
+Dass es seinen eigenen Lehrer nur zu 30 % schlägt, ist für Nachahmung normal:
+kleine Abweichungen führen in Lagen, die der Lehrer nie zeigt, und dort ist
+nichts gelernt. Genau da fängt Verstärkungslernen an.
+
+### Zusehen
+
+```
+index.html?netz=out/netz-hunter.json
+```
+
+Dieselbe Seite, das Netz fährt einfach mit — seine Bikes heissen `NETZ`.
+Möglich ist das, weil `src/net.js` dieselben `encodeSensors()` benutzt wie das
+Training, und weil `features-check` genau diese Gleichheit prüft.
+
 ## Noch offen
 
-- **Das Training selbst.** Alles darunter steht: Physik ohne Bildschirm,
-  Messstand über alle vier Modi, Bänder, Wahrnehmung, Belohnung. Die Latte
-  liegt: `hunter` schlägt `rookie` in 96,7 % der 1v1-Matches.
+- **Verstärkungslernen.** Die Kette steht und ein nachgeahmtes Netz schlägt
+  `rookie` zu 86,7 % — aber es lernt nur, was ein Bot ihm vormacht. Der
+  nächste Schritt ist, die Belohnung tatsächlich zu benutzen.
+- **Das Bild als Eingabe.** 4 × 24 × 24 liegt bereit, braucht aber Faltung;
+  bisher fährt das Netz auf 16 Zahlen.
 - **Die Belohnung ist nicht geprüft.** `features-check` weist sie nach Termen
   auf, und `leben` + `zeit` machen zusammen rund 80 % aus. Das ist genau die
   Form, die ein Netz zum Im-Kreis-Fahren erzieht — nachrechnen, bevor
