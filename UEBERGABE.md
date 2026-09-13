@@ -82,6 +82,7 @@ Repo öffentlich.
 | `src/net.js` | Das Netz: 16 → 24 → 3, als Agent. Läuft in Node *und* im Browser |
 | `tools/selfplay.mjs` | Matches ohne Bildschirm, Messstand, alle vier Modi über `--mode` |
 | `tools/train.mjs` | Nachahmungslernen: sammeln, lernen, antreten |
+| `tools/rl.mjs` | Verstärkungslernen (REINFORCE) auf der Belohnung |
 | `tools/features-check.mjs` | Prüft die KI-Wahrnehmung |
 | `legacy/` | Das alte Raster-Tron, eingefroren |
 
@@ -153,6 +154,8 @@ nicht). Für volle Originaltreue: `winZone: { round: Infinity, lastDeath: Infini
 - Gummi zeitbasiert → **streckenbasiert**, hohes Tempo frisst mehr
 - Sieger daran erkannt, wer noch lebt → **die Engine fragen**; bei Win-Zone und
   in Mannschaftsmodi leben mehrere, und einer davon hat gewonnen
+- Auf denselben Seeds trainiert und gemessen → **Mess-Seeds trennen** (in
+  `rl.mjs` bei 900000) und nie trainieren, sonst misst man das Geübte
 
 ---
 
@@ -170,6 +173,15 @@ des Cockpits. Eine Seite, ein Markup.
 5. ✅ **Trainings-Prototyp: die Kette ist geschlossen.** Ein nachgeahmtes Netz
    (483 Parameter) schlägt `rookie` zu 86,7 % und `grinder` zu 66,7 %.
    Zusehen: `index.html?netz=out/netz-hunter.json`.
+6. ✅ **Verstärkungslernen.** REINFORCE mit Grundlinie auf der reparierten
+   Belohnung, 208 Sekunden für 200 Durchgänge:
+
+   | Stufe | rookie | grinder | hunter | cruiser | Schnitt |
+   | --- | --- | --- | --- | --- | --- |
+   | nachgeahmt | 97,5 % | 52,5 % | 32,5 % | 32,5 % | **53,8 %** |
+   | + RL | 92,5 % | 72,5 % | 52,5 % | 62,5 % | **70,0 %** |
+
+   Zusehen: `index.html?netz=out/netz-rl.json`.
 
 ### Fehler, die dabei gefunden wurden
 
@@ -200,18 +212,22 @@ auf, als ein Skript sie gegen etwas anderes hielt.
 
 ## Offene Punkte
 
-1. **Verstärkungslernen.** Die Kette steht, aber das Netz ahmt nur einen Bot
-   nach — es schlägt seinen eigenen Lehrer nur zu 30 %. Die Belohnung wird
-   bisher gar nicht benutzt.
-2. **`TEMPO` halbieren?** 0,05 → 0,025 hebt die Belohnungs-Trefferquote von
+1. **Der Neugier-Bonus müsste abklingen.** Über 200 Durchgänge stieg die
+   Entropie von 0,20 auf 0,44 — der feste Bonus (`--entropie 0.01`) schiebt die
+   Politik immer weiter Richtung Zufall und deckelt damit vermutlich das
+   Ergebnis. Ein abklingender Wert ist der nächste offensichtliche Griff.
+2. **Selbstspiel.** Das Netz lernt gegen vier feste Bots und kann darum
+   höchstens so gut werden, wie die es fordern.
+3. **`TEMPO` halbieren?** 0,05 → 0,025 hebt die Belohnungs-Trefferquote von
    75 % auf 88 %. Bewusst offengelassen: `TEMPO` bringt das Grinden bei, und
    das ist der Kern des Spiels. Eine Entscheidung, kein Fehler.
-3. **Das Bild als Eingabe.** 4 × 24 × 24 liegt bereit, braucht aber Faltung.
-4. **`aiplayers.cfg` und `models/*.mod` sind ungenutzt** — dort steht, wie das
+4. **Das Bild als Eingabe.** 4 × 24 × 24 liegt bereit, braucht aber Faltung.
+5. **`aiplayers.cfg` und `models/*.mod` sind ungenutzt** — dort steht, wie das
    Original seine Bots einstellt und wie das Fahrzeug wirklich aussieht.
-5. **Kein Bot bremst** (1,5 % der Züge, Vorrat konstant voll). Wer deren Züge
+6. **Kein Bot bremst** (1,5 % der Züge, Vorrat konstant voll). Wer deren Züge
    nachahmt, lernt die Bremse nie kennen.
-6. **Nichts ist gepusht.** PR #1 ist unverändert alt.
+7. **Keine Übersichtskamera.** Jede der drei Kameras folgt genau einem Bike;
+   zum Zuschauen bei 16 Fahrern fehlt eine Ansicht der ganzen Arena.
 
 ---
 
