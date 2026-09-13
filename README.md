@@ -102,6 +102,7 @@ dem Originalnamen aus `settings.cfg` daneben.
 | `tools/serve.py` | Entwicklungs-Server ohne Zwischenspeicher |
 | `tools/selfplay.mjs` | Matches ohne Browser: Agenten vergleichen, Daten sammeln |
 | `tools/train.mjs` | Nachahmungslernen: sammeln, lernen, antreten (siehe unten) |
+| `tools/rl.mjs` | Verstärkungslernen (REINFORCE) auf der Belohnung aus `features.js` |
 | `tools/features-check.mjs` | Prüft die Wahrnehmung der KI (siehe unten) |
 | `tools/bike-preview.html` | Das Bike-Modell gross und drehbar |
 | `legacy/` | Die Vorgänger: 2D in einer Datei, und das komplette Raster-Tron |
@@ -354,11 +355,53 @@ Dieselbe Seite, das Netz fährt einfach mit — seine Bikes heissen `NETZ`.
 Möglich ist das, weil `src/net.js` dieselben `encodeSensors()` benutzt wie das
 Training, und weil `features-check` genau diese Gleichheit prüft.
 
+## Verstärkungslernen: `tools/rl.mjs`
+
+```bash
+node tools/rl.mjs --start out/netz-hunter.json --iterations 200 --matches 25
+```
+
+Ab hier gibt es kein Vorbild mehr: das Netz würfelt seine Züge aus der eigenen
+Verteilung, bekommt die Belohnung aus `features.js`, und wird in die Richtung
+geschoben, die **überdurchschnittlich** viel eingebracht hat. Verfahren ist
+REINFORCE mit Grundlinie — das einfachste, das funktioniert.
+
+Warm starten lohnt sich sehr. Aus dem Nichts würfelt sich ein Netz die ersten
+tausend Matches lang nur in Wände; vom nachgeahmten Netz aus geht es sofort
+aufwärts. Gemessen wird gierig (ohne Würfeln) gegen alle vier Bots, auf
+**Mess-Seeds, die nie trainiert werden** — und gespeichert wird das Netz mit
+der besten Siegquote, nicht das letzte.
+
+Ein Lauf über 200 Durchgänge, 208 Sekunden:
+
+```
+  STUFE                        ROOKIE  GRINDER   HUNTER  CRUISER   SCHNITT
+  --------------------------------------------------------------------------
+  nachgeahmt (train.mjs)        97.5%    52.5%    32.5%    32.5%      53.8 %
+  + RL (rl.mjs, 180 D.)         92.5%    72.5%    52.5%    62.5%      70.0 %
+```
+
+Gegen `rookie` verliert es ein wenig und holt das gegen alle drei anderen
+mehrfach zurück — es ist nicht mehr auf einen Lehrer zugeschnitten. Auch
+gemessen: es lebt länger (36,3 s statt 33,6) und fährt weiter (1103 m statt
+1001).
+
+**Die Belohnung ist nicht das Ziel — Gewinnen ist das Ziel.** Darum steht
+beides nebeneinander in der Tabelle. Steigt der Lohn und fällt die Siegquote,
+hat das Netz eine Marotte gefunden, und dann sieht man in `?replay` oder
+`?netz=…` in drei Sekunden, welche. Ein Beispiel aus der Praxis: das Netz macht
+ein auffälliges Treppenmuster — gemessen lenkt es aber nur 4,3-mal pro Sekunde,
+während `cruiser` und `grinder` auf 13–14 kommen. Keine Marotte, sondern die
+ruhigste Fahrweise im Feld nach `hunter` und `rookie`.
+
 ## Noch offen
 
-- **Verstärkungslernen.** Die Kette steht und ein nachgeahmtes Netz schlägt
-  `rookie` zu 86,7 % — aber es lernt nur, was ein Bot ihm vormacht. Der
-  nächste Schritt ist, die Belohnung tatsächlich zu benutzen.
+- **Der Neugier-Bonus müsste abklingen.** Über 200 Durchgänge stieg die
+  Entropie von 0,20 auf 0,44 — der feste Bonus von 0,01 schiebt die Politik
+  immer weiter Richtung Zufall und dürfte das Ergebnis deckeln. Ein
+  abklingender Wert ist der nächste offensichtliche Griff.
+- **Selbstspiel.** Bisher lernt das Netz gegen vier feste Bots; es kann also
+  höchstens so gut werden, wie die es fordern.
 - **Das Bild als Eingabe.** 4 × 24 × 24 liegt bereit, braucht aber Faltung;
   bisher fährt das Netz auf 16 Zahlen.
 - **Die Belohnung ist nicht geprüft.** `features-check` weist sie nach Termen
