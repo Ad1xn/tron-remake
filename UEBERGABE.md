@@ -77,9 +77,11 @@ Repo öffentlich.
 | `src/render3d.js` | Three.js. Drei Kameras, Instanz-Netze für Wände |
 | `src/hud.js` | Cockpit nach `classic.aacockpit.xml` |
 | `src/input.js` | Relative Lenkung, Kurvenpuffer, Glance-Tasten |
-| `src/main.js` | Schleife, 125 Hz Physik, Modus-/Kamerawechsel |
-| `src/arena.js` + `arena.html` | Replay-Betrachter — **KAPUTT** seit dem Cockpit-Umbau |
-| `tools/selfplay.mjs` | Matches ohne Bildschirm, Messstand — **kennt die neuen Modi noch nicht** |
+| `src/main.js` | Schleife, 125 Hz Physik, Modus-/Kamerawechsel, verzweigt auf `?replay` und `?netz` |
+| `src/playback.js` | Replay-Betrachter, hängt an `index.html?replay` (löste `arena.html` ab) |
+| `src/net.js` | Das Netz: 16 → 24 → 3, als Agent. Läuft in Node *und* im Browser |
+| `tools/selfplay.mjs` | Matches ohne Bildschirm, Messstand, alle vier Modi über `--mode` |
+| `tools/train.mjs` | Nachahmungslernen: sammeln, lernen, antreten |
 | `tools/features-check.mjs` | Prüft die KI-Wahrnehmung |
 | `legacy/` | Das alte Raster-Tron, eingefroren |
 
@@ -149,25 +151,67 @@ nicht). Für volle Originaltreue: `winZone: { round: Infinity, lastDeath: Infini
 - Punkte fürs Abschiessen auf 0 gesetzt → **SCORE_KILL 3**
 - Arena mit der Spielerzahl wachsen lassen → sie ist fest
 - Gummi zeitbasiert → **streckenbasiert**, hohes Tempo frisst mehr
+- Sieger daran erkannt, wer noch lebt → **die Engine fragen**; bei Win-Zone und
+  in Mannschaftsmodi leben mehrere, und einer davon hat gewonnen
+
+---
+
+## Erledigt (Stand 13.09.2026)
+
+Die Werkbank-Frage ist entschieden: **sie bleibt** — sie *ist* das Ziel. Kaputt
+war nur der Betrachter, und der war eine zweite Seite mit einer zweiten Kopie
+des Cockpits. Eine Seite, ein Markup.
+
+1. ✅ Committet. Acht Commits, alles aus dem Arbeitsverzeichnis.
+2. ✅ **Werkbank bleibt.** `arena.html` + `src/arena.js` gelöscht, Wiedergabe als
+   `index.html?replay` an dieselbe Seite gehängt (`src/playback.js`).
+3. ✅ README auf den Stand gebracht.
+4. ✅ `--mode` im Messstand, alle vier Modi messbar.
+5. ✅ **Trainings-Prototyp: die Kette ist geschlossen.** Ein nachgeahmtes Netz
+   (483 Parameter) schlägt `rookie` zu 86,7 % und `grinder` zu 66,7 %.
+   Zusehen: `index.html?netz=out/netz-hunter.json`.
+
+### Fehler, die dabei gefunden wurden
+
+Alle fünf waren still — keiner davon warf eine Fehlermeldung:
+
+- **6 tote `RULES`-Schlüssel** aus der Umbenennung auf die Originalnamen. Der
+  Sensor `tempo` war in *jedem* Schritt NaN. Der Win-Zone-Radius war NaN,
+  wodurch der Standardmodus bei exakt 60 s mit willkürlichem Sieger endete —
+  alle vier Fahrer noch am Leben.
+- **Der Messstand zählte falsch.** Der Sieger kam aus „wer lebt noch"; das gilt
+  nur beim Ausscheiden. 13 von 20 `lms`-Matches galten als unentschieden,
+  obwohl es jedes Mal einen Sieger gab.
+- **Der Siegbonus feuerte nie.** „Gewonnen" hiess `alle anderen sind tot` —
+  bei Win-Zone und in Mannschaftsmodi nie wahr.
+- **Die Belohnung wusste nichts über Gewinnen.** Gemessen an 24 Matches hatte
+  der Sieger in 29 % der Fälle die höchste Summe (Zufall: 25 %), und die Formel
+  setzte `grinder` mit 2 Siegen über `hunter` mit 13. Ursache: `LEBEN − ZEIT`
+  trug über eine 60-s-Runde rund 3,8 ein, ein Sieg nur 1,0. `SIEG` steht jetzt
+  auf 10 → 75 %.
+- **`features-check` verschluckte das Rundenende** und zeigte KILL/TOD/SIEG als
+  0,00 — im selben Lauf, der „10 Tode, 5 Siege" meldete.
+
+Die Lehre daraus ist dieselbe wie im Kopf dieses Dokuments, nur schärfer: **jede
+Zahl, die niemand nachrechnet, ist vermutlich falsch.** Alle fünf fielen erst
+auf, als ein Skript sie gegen etwas anderes hielt.
 
 ---
 
 ## Offene Punkte
 
-1. **`arena.html` ist kaputt** — das Cockpit wurde umgebaut, die alten Element-IDs
-   fehlen. Hängt an der Entscheidung: **KI-Werkbank raus oder bleibt?**
-   (`arena.html`, `src/arena.js`, `src/replay.js`, `src/features.js`,
-   `tools/selfplay.mjs`, `tools/features-check.mjs`, `legacy/`)
-2. **`tools/selfplay.mjs` kennt die vier Modi nicht** (nur `lms`/`fortress` alt).
-3. **README ist veraltet** — beschreibt einen Stand von vor mehreren Umbauten.
-4. **GitHub-PR #1 ist mehrere Tage alt.** Alles seitdem (echte Werte, Gitter-Index,
-   Explosionslöcher, drei Kameras, vier Modi, zwei behobene Fehler) liegt nur
-   im Arbeitsverzeichnis. **Als erstes committen.**
-5. **`aiplayers.cfg` und `models/*.mod` sind ungenutzt** — dort steht, wie das
+1. **Verstärkungslernen.** Die Kette steht, aber das Netz ahmt nur einen Bot
+   nach — es schlägt seinen eigenen Lehrer nur zu 30 %. Die Belohnung wird
+   bisher gar nicht benutzt.
+2. **`TEMPO` halbieren?** 0,05 → 0,025 hebt die Belohnungs-Trefferquote von
+   75 % auf 88 %. Bewusst offengelassen: `TEMPO` bringt das Grinden bei, und
+   das ist der Kern des Spiels. Eine Entscheidung, kein Fehler.
+3. **Das Bild als Eingabe.** 4 × 24 × 24 liegt bereit, braucht aber Faltung.
+4. **`aiplayers.cfg` und `models/*.mod` sind ungenutzt** — dort steht, wie das
    Original seine Bots einstellt und wie das Fahrzeug wirklich aussieht.
-6. **Das eigentliche Ziel: KI trainieren.** Die Werkbank steht (Engine ohne
-   Bildschirm bei ~0,03 ms/Schritt = ~10 volle 16er-Matches pro Sekunde,
-   Beobachtung, Belohnung, Bänder, Messstand).
+5. **Kein Bot bremst** (1,5 % der Züge, Vorrat konstant voll). Wer deren Züge
+   nachahmt, lernt die Bremse nie kennen.
+6. **Nichts ist gepusht.** PR #1 ist unverändert alt.
 
 ---
 
