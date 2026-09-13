@@ -413,10 +413,18 @@ export const REWARD = {
    Netz sie nicht doch aushebelt. Darum gibt es index.html?replay.
    ========================================================================= */
 
-/* Vor dem Schritt aufnehmen … */
-export function rewardSnapshot(view) {
+/* Vor dem Schritt aufnehmen …
+
+   `mitRaum` kann das teuerste Stück abschalten: der RAUM-Term rastert
+   4 × 24 × 24 Zellen, und das kostet mehr als die halbe Rechenzeit
+   (gemessen: 35,7 µs je Agentenschritt mit, 13,7 µs ohne — die Physik
+   selbst braucht 5,6). Beim Verstärkungslernen wird diese Funktion
+   millionenfach gerufen, da lohnt sich die Wahl. Wer sie abschaltet,
+   MUSS auch RAUM auf 0 setzen, sonst rechnet reward() mit room = 0 und
+   die Differenz ist Unsinn. */
+export function rewardSnapshot(view, mitRaum = true) {
   return {
-    room: localRoom(encodePatch(view)),
+    room: mitRaum ? localRoom(encodePatch(view)) : 0,
     rubberUsedTotal: RULES.RUBBER - view.self.rubber,
     alive: view.self.alive !== false,
     others: view.others.filter((o) => o.alive).length,
@@ -429,7 +437,8 @@ export function rewardSnapshot(view) {
 /* … und danach abrechnen. `events` ist der Rückgabewert von step(). */
 export function reward(before, viewAfter, events = null, cycle = null,
                        weights = REWARD) {
-  const after = rewardSnapshot(viewAfter);
+  /* Kostet RAUM nichts, muss auch nichts dafür gerechnet werden. */
+  const after = rewardSnapshot(viewAfter, weights.RAUM !== 0);
 
   const died = before.alive && !after.alive;
 

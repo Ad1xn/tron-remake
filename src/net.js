@@ -122,6 +122,90 @@ export function ladeNetz(json) {
 
 
 /* ------------------------------------------------------------------
+   LERNEN — Gradienten und Adam
+   ------------------------------------------------------------------
+   Steht HIER und nicht im Trainingsskript, weil es zwei Trainer gibt:
+   tools/train.mjs (nachahmen) und tools/rl.mjs (verstärken). Sie
+   unterscheiden sich nur darin, WOMIT sie dRoh füllen —
+
+       nachahmen    dRoh = p − onehot(lehrer)        × Klassengewicht
+       verstärken   dRoh = p − onehot(gewürfelt)     × Vorteil
+
+   — die Ableitung dahinter ist dieselbe. Zwei Kopien davon zu pflegen
+   wäre genau der Fehler, an dem schon arena.html gestorben ist.
+   ------------------------------------------------------------------ */
+export function neueGradienten(netz) {
+  const leer = (n) => ({ g: new Float64Array(n), m: new Float64Array(n),
+                         v: new Float64Array(n), t: 0 });
+  return {
+    w1: leer(netz.w1.length), b1: leer(netz.verdeckt),
+    w2: leer(netz.w2.length), b2: leer(netz.aus),
+  };
+}
+
+/* Arbeitsspeicher für einen Vorwärts-/Rückwärtslauf. Einmal anlegen und
+   wiederverwenden — bei Millionen Schritten ist jede Allokation teuer. */
+export function neuerZwischenspeicher(netz) {
+  return {
+    h: new Float64Array(netz.verdeckt),
+    roh: new Float64Array(netz.aus),
+    p: new Float64Array(netz.aus),
+    dRoh: new Float64Array(netz.aus),
+    dH: new Float64Array(netz.verdeckt),
+  };
+}
+
+/* Rückwärts. Erwartet, dass vorwaerts(netz, x, zw) gelaufen ist und
+   zw.dRoh gefüllt wurde. Summiert auf die Gradienten auf. */
+export function rueckwaerts(netz, x, zw, grad) {
+  const { ein, verdeckt, aus, w2 } = netz;
+  const { h, dRoh, dH } = zw;
+
+  for (let k = 0; k < aus; k++) {
+    const d = dRoh[k];
+    if (d === 0) continue;
+    const off = k * verdeckt;
+    for (let j = 0; j < verdeckt; j++) grad.w2.g[off + j] += d * h[j];
+    grad.b2.g[k] += d;
+  }
+
+  for (let j = 0; j < verdeckt; j++) {
+    let sum = 0;
+    for (let k = 0; k < aus; k++) sum += w2[k * verdeckt + j] * dRoh[k];
+    dH[j] = sum * (1 - h[j] * h[j]);            // Ableitung von tanh
+  }
+
+  for (let j = 0; j < verdeckt; j++) {
+    const d = dH[j];
+    if (d === 0) continue;
+    const off = j * ein;
+    for (let i = 0; i < ein; i++) grad.w1.g[off + i] += d * x[i];
+    grad.b1.g[j] += d;
+  }
+}
+
+/* Ein Adam-Schritt über alle vier Parameterblöcke. `norm` teilt die
+   aufsummierten Gradienten — beim Nachahmen durch die Gewichtssumme,
+   beim Verstärken durch die Anzahl der Schritte. Danach sind die
+   Gradienten wieder auf null. */
+export function anwenden(netz, grad, lr, norm = 1) {
+  const b1 = 0.9, b2 = 0.999, eps = 1e-8;
+  for (const [name, block] of Object.entries(grad)) {
+    const param = netz[name];
+    block.t++;
+    const k1 = 1 - Math.pow(b1, block.t), k2 = 1 - Math.pow(b2, block.t);
+    for (let i = 0; i < param.length; i++) {
+      const g = block.g[i] * norm;
+      block.m[i] = b1 * block.m[i] + (1 - b1) * g;
+      block.v[i] = b2 * block.v[i] + (1 - b2) * g * g;
+      param[i] -= lr * (block.m[i] / k1) / (Math.sqrt(block.v[i] / k2) + eps);
+      block.g[i] = 0;
+    }
+  }
+}
+
+
+/* ------------------------------------------------------------------
    ALS AGENT
    ------------------------------------------------------------------
    Die Schnittstelle aus agents.js: ({ game, cycle, rng }) → { turn,

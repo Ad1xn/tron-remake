@@ -53,7 +53,8 @@ import { collectActions, AGENTS } from "../src/agents.js";
 import { RULES, COLORS } from "../src/config.js";
 import { viewOfGame, encodeSensors, indexOf, ACTIONS, SENSOR_NAMES }
   from "../src/features.js";
-import { neuesNetz, vorwaerts, softmax, groesster, netzAlsJson, netzAgent }
+import { neuesNetz, vorwaerts, softmax, groesster, netzAlsJson, netzAgent,
+         neueGradienten, neuerZwischenspeicher, rueckwaerts, anwenden }
   from "../src/net.js";
 import { runMatch } from "./selfplay.mjs";
 
@@ -118,37 +119,13 @@ function sammeln(opt) {
 /* ------------------------------------------------------------------
    2. LERNEN
    ------------------------------------------------------------------
-   Adam von Hand — fünfzehn Zeilen und viel gutmütiger als reines SGD,
-   dessen Lernrate man für jede Aufgabe neu sucht.
+   Die Ableitung und Adam stehen in src/net.js — hier steht nur, WOMIT
+   dRoh gefüllt wird: p minus dem, was der Lehrer getan hat, gewichtet
+   nach Klasse.
    ------------------------------------------------------------------ */
-function adam(groesse) {
-  return { m: new Float64Array(groesse), v: new Float64Array(groesse), t: 0 };
-}
-
-function schritt(param, grad, zustand, lr) {
-  const b1 = 0.9, b2 = 0.999, eps = 1e-8;
-  zustand.t++;
-  const k1 = 1 - Math.pow(b1, zustand.t), k2 = 1 - Math.pow(b2, zustand.t);
-  for (let i = 0; i < param.length; i++) {
-    zustand.m[i] = b1 * zustand.m[i] + (1 - b1) * grad[i];
-    zustand.v[i] = b2 * zustand.v[i] + (1 - b2) * grad[i] * grad[i];
-    param[i] -= lr * (zustand.m[i] / k1) / (Math.sqrt(zustand.v[i] / k2) + eps);
-    grad[i] = 0;
-  }
-}
-
 function trainieren(netz, X, y, gewichtProKlasse, opt, rng) {
-  const { ein, verdeckt, aus } = netz;
-  const gw1 = new Float64Array(netz.w1.length), gb1 = new Float64Array(verdeckt);
-  const gw2 = new Float64Array(netz.w2.length), gb2 = new Float64Array(aus);
-  const zw = { h: new Float64Array(verdeckt), roh: new Float64Array(aus) };
-  const p = new Float64Array(aus);
-  const dRoh = new Float64Array(aus);
-  const dH = new Float64Array(verdeckt);
-
-  const aW1 = adam(netz.w1.length), aB1 = adam(verdeckt);
-  const aW2 = adam(netz.w2.length), aB2 = adam(aus);
-
+  const grad = neueGradienten(netz);
+  const zw = neuerZwischenspeicher(netz);
   const reihenfolge = Uint32Array.from(X.keys());
   let letzterVerlust = 0;
 
@@ -171,46 +148,20 @@ function trainieren(netz, X, y, gewichtProKlasse, opt, rng) {
         gewichtSumme += g;
 
         vorwaerts(netz, x, zw);
-        softmax(zw.roh, p);
-        verlust += -g * Math.log(Math.max(p[ziel], 1e-12));
+        softmax(zw.roh, zw.p);
+        verlust += -g * Math.log(Math.max(zw.p[ziel], 1e-12));
         n++;
 
-        for (let k = 0; k < aus; k++) dRoh[k] = g * (p[k] - (k === ziel ? 1 : 0));
-
-        for (let k = 0; k < aus; k++) {
-          const off = k * verdeckt, d = dRoh[k];
-          if (d === 0) continue;
-          for (let j = 0; j < verdeckt; j++) gw2[off + j] += d * zw.h[j];
-          gb2[k] += d;
+        for (let k = 0; k < netz.aus; k++) {
+          zw.dRoh[k] = g * (zw.p[k] - (k === ziel ? 1 : 0));
         }
-
-        for (let j = 0; j < verdeckt; j++) {
-          let s = 0;
-          for (let k = 0; k < aus; k++) s += netz.w2[k * verdeckt + j] * dRoh[k];
-          dH[j] = s * (1 - zw.h[j] * zw.h[j]);       // Ableitung von tanh
-        }
-
-        for (let j = 0; j < verdeckt; j++) {
-          const off = j * ein, d = dH[j];
-          if (d === 0) continue;
-          for (let i = 0; i < ein; i++) gw1[off + i] += d * x[i];
-          gb1[j] += d;
-        }
+        rueckwaerts(netz, x, zw, grad);
       }
 
-      // Durch die Gewichtssumme teilen, nicht durch die Anzahl: sonst
-      // hinge die Schrittweite daran, wie viele seltene Klassen zufällig
-      // im Los waren.
-      const norm = 1 / Math.max(gewichtSumme, 1e-9);
-      for (let i = 0; i < gw1.length; i++) gw1[i] *= norm;
-      for (let i = 0; i < gb1.length; i++) gb1[i] *= norm;
-      for (let i = 0; i < gw2.length; i++) gw2[i] *= norm;
-      for (let i = 0; i < gb2.length; i++) gb2[i] *= norm;
-
-      schritt(netz.w1, gw1, aW1, opt.lr);
-      schritt(netz.b1, gb1, aB1, opt.lr);
-      schritt(netz.w2, gw2, aW2, opt.lr);
-      schritt(netz.b2, gb2, aB2, opt.lr);
+      /* Durch die GEWICHTSSUMME teilen, nicht durch die Anzahl: sonst
+         hinge die Schrittweite daran, wie viele seltene Klassen zufällig
+         im Los waren. */
+      anwenden(netz, grad, opt.lr, 1 / Math.max(gewichtSumme, 1e-9));
     }
     letzterVerlust = verlust / Math.max(n, 1);
     if (e === 0 || (e + 1) % 5 === 0 || e === opt.epochs - 1) {
