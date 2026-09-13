@@ -386,6 +386,25 @@ mehrfach zurück — es ist nicht mehr auf einen Lehrer zugeschnitten. Auch
 gemessen: es lebt länger (36,3 s statt 33,6) und fährt weiter (1103 m statt
 1001).
 
+### Zwei Schrauben, die den Unterschied machen
+
+```bash
+node tools/rl.mjs --start out/netz-hunter.json --entropieEnde 0.001
+node tools/rl.mjs --start out/netz-hunter.json --entropieEnde 0.001 --selbst 0.4
+```
+
+**Der Neugier-Bonus hält die Verteilung breit**, damit das Netz überhaupt etwas
+ausprobiert. Bleibt er konstant, schiebt er aber bis zum Schluss: über 200
+Durchgänge stieg die Entropie von 0,20 auf 0,44 — am Ende würfelte das Netz
+also *mehr* als am Anfang. Am Anfang ist das richtig, am Ende will man die
+gefundene Politik scharfstellen. `--entropieEnde` fährt ihn linear herunter.
+
+**Die Liga** (`--selbst`) stellt dem Netz eingefrorene Kopien seiner selbst als
+Gegner gegenüber. Eingefroren müssen sie sein: spielt die aktuelle Politik nur
+gegen sich selbst, jagt sie ein bewegliches Ziel, weil sich beide Seiten
+gleichzeitig ändern. Die Bots bleiben trotzdem im Feld — sie sind die Messlatte
+und verhindern, dass die Liga in eine gemeinsame Marotte abdriftet.
+
 **Die Belohnung ist nicht das Ziel — Gewinnen ist das Ziel.** Darum steht
 beides nebeneinander in der Tabelle. Steigt der Lohn und fällt die Siegquote,
 hat das Netz eine Marotte gefunden, und dann sieht man in `?replay` oder

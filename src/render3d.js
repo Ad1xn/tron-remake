@@ -504,7 +504,10 @@ export function createRenderer(canvas) {
   ];
   const YAW = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
 
-  const fovMul = { x: 1, y: 0.6 };     // Tangens der halben Öffnungswinkel
+  /* Das senkrechte Sichtfeld, aus RULES.FOV (90° WAAGERECHT) und dem
+     Seitenverhältnis umgerechnet. Steht hier, weil placeCamera() es
+     jedes Bild braucht: dort kommt der Tempo-Zuschlag drauf. */
+  let basisFov = 60;
   const eye = new THREE.Vector3();
   const aim = new THREE.Vector3();
   let eyeSmooth = null, aimSmooth = null;
@@ -616,8 +619,20 @@ export function createRenderer(canvas) {
     camera.lookAt(aimSmooth);
     /* Das Sichtfeld öffnet sich mit dem Tempo. Billigster und
        wirksamster Trick, damit 50 m/s auch nach 50 m/s aussehen. */
-    camera.fov = (mode === "cycle" ? 78 : 56) + speedT * 10;
-    camera.updateProjectionMatrix();
+    /* Das Sichtfeld öffnet sich mit dem Tempo — billigster und
+       wirksamster Trick, damit 50 m/s auch nach 50 m/s aussehen.
+
+       HIER STAND EINE 56. Das war der alte, falsche Wert (senkrecht
+       geraten statt aus 90° waagerecht umgerechnet), und weil
+       placeCamera() jedes Bild läuft, überschrieb diese Zeile die
+       richtige Rechnung aus setFov() sofort wieder. Gemessen im
+       Browser: 62° statt 90°. Der Fehler stand in der Übergabe als
+       behoben — behoben war nur die Rechnung, nicht ihre Wirkung. */
+    const fov = basisFov + speedT * 10;
+    if (Math.abs(camera.fov - fov) > 0.01) {
+      camera.fov = fov;
+      camera.updateProjectionMatrix();
+    }
   }
 
 
@@ -746,12 +761,10 @@ export function createRenderer(canvas) {
     const ensureVertical = Math.max(aspect / 1.5, 1);
     const xmul = ensureVertical * Math.tan((Math.PI / 360) * RULES.FOV);
     const ymul = xmul / aspect;
-    fovMul.x = xmul; fovMul.y = ymul;
-    const fov = 2 * Math.atan(ymul) * 180 / Math.PI;
-    if (Math.abs(camera.fov - fov) > 0.01) {
-      camera.fov = fov;
-      camera.updateProjectionMatrix();
-    }
+    /* Nur merken, nicht setzen: placeCamera() legt den Tempo-Zuschlag
+       drauf und setzt es jedes Bild. Zwei Stellen, die dieselbe
+       Eigenschaft schreiben, waren ja gerade der Fehler. */
+    basisFov = 2 * Math.atan(ymul) * 180 / Math.PI;
   }
 
   function resize() {
