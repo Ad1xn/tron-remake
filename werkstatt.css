@@ -1,0 +1,140 @@
+/* =========================================================================
+   Optik der Werkbank.
+   =========================================================================
+   Eigene Datei, nicht in style.css: das Spiel soll schwarz und leer
+   bleiben, die Werkbank ist ein Arbeitsraum mit Panelen. Die Farbtafel
+   aus :root in style.css wird geerbt.
+   ========================================================================= */
+
+body.werkbank {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem 0.7rem 0.7rem;
+  overflow: auto;
+  font-size: 0.72rem;
+}
+
+/* ---------------- Steuerleiste ---------------- */
+.leiste {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.leiste button,
+.leiste input[type="number"] {
+  font: inherit;
+  font-weight: 700;
+  color: var(--ink);
+  background: #05070f;
+  border: 1px solid #16233f;
+  border-radius: 0.25rem;
+  padding: 0.3rem 0.55rem;
+  cursor: pointer;
+}
+.leiste button:hover { border-color: var(--cap); color: #fff; }
+.leiste button.haupt { border-color: #1f7a4d; color: #7dffa0; min-width: 9rem; }
+.leiste button.haupt.laeuft { border-color: var(--cap); color: #ff7a7a; }
+.leiste input[type="number"] { width: 4.2rem; cursor: text; }
+.leiste input[type="range"] { width: 7rem; }
+.leiste label { color: var(--cap); letter-spacing: 0.04em; display: flex; gap: 0.3rem; align-items: center; }
+.leiste label.schalter { cursor: pointer; }
+.leiste b { color: var(--cyan); font-weight: 700; }
+.leiste .trenner { width: 1px; height: 1.2rem; background: #16233f; margin: 0 0.3rem; }
+
+/* ---------------- Kennzahlen ---------------- */
+.zahlen {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  gap: 0.4rem;
+}
+.zahl {
+  border: 1px solid #101a2e;
+  border-radius: 0.25rem;
+  padding: 0.35rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  background: #04060c;
+}
+.zahl .k { color: var(--cap); font-size: 0.58rem; letter-spacing: 0.08em; }
+.zahl b { color: var(--cyan); font-size: 1rem; }
+
+/* ---------------- Raster: Arena links, Panele rechts ---------------- */
+.raster {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  gap: 0.5rem;
+  min-height: 27rem;
+}
+@media (max-width: 1100px) { .raster { grid-template-columns: 1fr; } }
+
+.feld, .kasten {
+  position: relative;
+  border: 1px solid #101a2e;
+  border-radius: 0.3rem;
+  background: #04060c;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.feld h2, .kasten h2, .population h2 {
+  margin: 0;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  color: var(--cap);
+  border-bottom: 1px solid #101a2e;
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+}
+.feld h2 i, .kasten h2 i, .population h2 i {
+  font-style: normal;
+  color: var(--dim);
+  letter-spacing: 0;
+  font-weight: 400;
+}
+.feld #board { flex: 1; width: 100%; display: block; min-height: 0; }
+.feld .labels { top: 1.4rem; }
+
+.seite { display: grid; grid-template-rows: 1.25fr 1fr; gap: 0.5rem; min-height: 0; }
+.kasten canvas { flex: 1; width: 100%; display: block; min-height: 0; }
+
+/* ---------------- Population ---------------- */
+.population {
+  border: 1px solid #101a2e;
+  border-radius: 0.3rem;
+  background: #04060c;
+}
+.kacheln {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(4.4rem, 1fr));
+  gap: 0.25rem;
+  padding: 0.4rem;
+}
+.kachel {
+  border-radius: 0.2rem;
+  padding: 0.28rem 0.35rem;
+  line-height: 1.25;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform 0.08s;
+}
+.kachel:hover { transform: translateY(-1px); border-color: var(--ink); }
+.kachel.gewaehlt { border-color: #7dffa0; }
+.kachel .nr { font-size: 0.55rem; opacity: 0.7; }
+.kachel .fit { display: block; font-weight: 700; font-size: 0.78rem; }
+.kachel .art { font-size: 0.52rem; opacity: 0.65; }
+
+/* ---------------- Fuss ---------------- */
+.fuss {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.2rem;
+  color: #3d4d70;
+  font-size: 0.62rem;
+  padding: 0 0.2rem;
+}
+.fuss b { color: var(--dim); }
+.fuss a { color: var(--dim); }

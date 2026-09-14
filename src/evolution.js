@@ -72,17 +72,24 @@ export function plaetze(variante, anzahl, arena) {
     spawnFor((variante * 3 + i * 2) % RING, RING, arena));
 }
 
-export function kampf(netze, seed, maxTicks = STANDARD.maxTicks, variante = null) {
+/* Ein Spiel aus einer Handvoll Netze — noch nicht gespielt, nur
+   aufgestellt. Getrennt von kampf(), weil die Werkbank dasselbe Spiel
+   braucht, aber Schritt für Schritt zeichnen will statt es in einem
+   Rutsch durchzurechnen. */
+export function schaukampfSpiel(netze, seed, variante = null, namen = null) {
   const arena = arenaFor();
   const spawns = variante === null ? null : plaetze(variante, netze.length, arena);
   const riders = netze.map((n, i) => ({
-    name: "N" + i,
+    name: namen ? namen[i] : "N" + i,
     color: COLORS[i % COLORS.length],
     spawn: spawns ? spawns[i] : undefined,
     driver: { type: "agent", agent: "netz" + i, fn: netzAgent(n, { name: "netz" + i }) },
   }));
+  return createGame({ riders, seed, arena, mode: "lms" });
+}
 
-  const game = createGame({ riders, seed, arena, mode: "lms" });
+export function kampf(netze, seed, maxTicks = STANDARD.maxTicks, variante = null) {
+  const game = schaukampfSpiel(netze, seed, variante);
   while (game.phase === "running" && game.tick < maxTicks) {
     step(game, collectActions(game));
   }
@@ -132,6 +139,12 @@ export function erzeugeEvolution(optionen = {}) {
   const ahnen = [];                 // eingefrorene Vorfahren (für die Galerie)
   let urahn = null;                 // der Beste der Generation 0 — FÜR IMMER
   const verlauf = [];               // je Generation eine Zeile für die Kurve
+  /* Die BEWERTETE Population der zuletzt abgeschlossenen Generation.
+     Nötig, weil abschliessen() am Ende die nächste Generation aufstellt
+     und deren Kinder noch keine Fitness haben — wer danach population
+     anzeigt, sieht lauter Nullen und hält die halbe Population für
+     wertlos. Gezeigt gehört, was GEFAHREN ist. */
+  let bewertung = [];
 
   /* Die Mutationsstärke fällt über die Generationen: am Anfang grob
      suchen, später fein. Ein fester Wert macht beides schlecht. */
@@ -169,6 +182,7 @@ export function erzeugeEvolution(optionen = {}) {
     get ahnen() { return ahnen; },
     get urahn() { return urahn; },
     get verlauf() { return verlauf; },
+    get bewertung() { return bewertung; },
     get optionen() { return opt; },
     get matchNr() { return matchNr; },
     get mutationsstaerke() { return staerke(); },
@@ -218,6 +232,10 @@ export function erzeugeEvolution(optionen = {}) {
         e.fitness = e.siege / m + 0.3 * Math.min((e.zeit / m) / maxZeit, 1);
       }
       population.sort((a, b) => b.fitness - a.fitness);
+      bewertung = population.map((e) => ({
+        fitness: e.fitness, siege: e.siege, matches: e.matches,
+        herkunft: e.herkunft, alter: e.alter,
+      }));
 
       const beste = population[0];
       const schnitt = population.reduce((s, e) => s + e.fitness, 0) / population.length;
@@ -280,16 +298,11 @@ export function erzeugeEvolution(optionen = {}) {
        Oberfläche Schritt für Schritt zeichnen kann. */
     schaukampf(indizes, seed) {
       const wer = indizes || besetzung();
-      const riders = wer.map((i, platz) => ({
-        name: "N" + i,
-        color: COLORS[platz % COLORS.length],
-        driver: { type: "agent", agent: "netz" + i,
-                  fn: netzAgent(population[i].netz, { name: "netz" + i }) },
-      }));
       return {
         wer,
-        game: createGame({ riders, seed: seed ?? (7000 + generation),
-                           arena: arenaFor(), mode: "lms" }),
+        game: schaukampfSpiel(wer.map((i) => population[i].netz),
+                              seed ?? (7000 + generation), 0,
+                              wer.map((i) => "N" + (i + 1))),
       };
     },
   };
