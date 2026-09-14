@@ -386,24 +386,42 @@ mehrfach zurück — es ist nicht mehr auf einen Lehrer zugeschnitten. Auch
 gemessen: es lebt länger (36,3 s statt 33,6) und fährt weiter (1103 m statt
 1001).
 
-### Zwei Schrauben, die den Unterschied machen
+### Zwei Schrauben, die (noch) nichts bringen
 
 ```bash
 node tools/rl.mjs --start out/netz-hunter.json --entropieEnde 0.001
 node tools/rl.mjs --start out/netz-hunter.json --entropieEnde 0.001 --selbst 0.4
 ```
 
-**Der Neugier-Bonus hält die Verteilung breit**, damit das Netz überhaupt etwas
-ausprobiert. Bleibt er konstant, schiebt er aber bis zum Schluss: über 200
-Durchgänge stieg die Entropie von 0,20 auf 0,44 — am Ende würfelte das Netz
-also *mehr* als am Anfang. Am Anfang ist das richtig, am Ende will man die
-gefundene Politik scharfstellen. `--entropieEnde` fährt ihn linear herunter.
+**Der Neugier-Bonus** hält die Verteilung breit, damit das Netz überhaupt etwas
+ausprobiert. Bleibt er konstant, schiebt er bis zum Schluss: über 200 Durchgänge
+stieg die Entropie von 0,20 auf 0,44 — am Ende würfelte das Netz *mehr* als am
+Anfang. `--entropieEnde` fährt ihn linear herunter. Klingt zwingend, ist aber
+**gemessen schlechter**.
 
-**Die Liga** (`--selbst`) stellt dem Netz eingefrorene Kopien seiner selbst als
-Gegner gegenüber. Eingefroren müssen sie sein: spielt die aktuelle Politik nur
-gegen sich selbst, jagt sie ein bewegliches Ziel, weil sich beide Seiten
-gleichzeitig ändern. Die Bots bleiben trotzdem im Feld — sie sind die Messlatte
-und verhindern, dass die Liga in eine gemeinsame Marotte abdriftet.
+**Die Liga** (`--selbst`) stellt eingefrorene Kopien des Netzes als Gegner auf.
+Eingefroren müssen sie sein: gegen sich selbst jagt die Politik ein bewegliches
+Ziel, weil sich beide Seiten gleichzeitig ändern. Die Bots bleiben im Feld — sie
+sind die Messlatte. Auch das bringt bisher nichts.
+
+Je 200 Durchgänge, jede Variante mit **drei** Seeds:
+
+```
+  VARIANTE                  SEED 1  SEED 2  SEED 3    MITTEL   SPANNE
+  --------------------------------------------------------------------
+  A  Neugier konstant         66,3    68,3    65,4      66,7      2,9
+  B  Neugier 0,01 → 0,001     64,6    59,6    62,9      62,4      5,0
+  C  B + Liga 40 %            63,8    62,1    65,0      63,6      2,9
+```
+
+Ein einzelner Lauf vorher hatte genau das Gegenteil behauptet (A 70,0 · B 73,8 ·
+C 66,3) — und das war Rauschen. **Die Spanne innerhalb einer Variante ist so
+gross wie der Unterschied zwischen ihnen.** Wer hier aus einem Lauf schliesst,
+schliesst falsch; dazu kommt, dass „bestes Netz aus 200 Durchgängen" ein
+Maximum über mehrere Messungen ist und damit systematisch zu hoch liegt.
+
+Beide Optionen bleiben drin, weil sie richtig gebaut und dokumentiert sind —
+aber die Standardwerte schalten sie aus.
 
 **Die Belohnung ist nicht das Ziel — Gewinnen ist das Ziel.** Darum steht
 beides nebeneinander in der Tabelle. Steigt der Lohn und fällt die Siegquote,

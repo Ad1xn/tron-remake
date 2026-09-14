@@ -156,6 +156,12 @@ nicht). Für volle Originaltreue: `winZone: { round: Infinity, lastDeath: Infini
   in Mannschaftsmodi leben mehrere, und einer davon hat gewonnen
 - Auf denselben Seeds trainiert und gemessen → **Mess-Seeds trennen** (in
   `rl.mjs` bei 900000) und nie trainieren, sonst misst man das Geübte
+- Aus EINEM Trainingslauf geschlossen, eine Änderung sei besser → mit drei
+  Seeds kam das Gegenteil heraus. Die Spanne innerhalb einer Variante war so
+  gross wie der Unterschied zwischen ihnen
+- Einen Fehler als behoben abgehakt, weil die Rechnung stimmte → die alte
+  Zeile überschrieb das Ergebnis jedes Bild weiter (Sichtfeld 56° statt 90°).
+  Behoben ist erst, was am Ende auch ankommt — nachmessen
 
 ---
 
@@ -212,12 +218,20 @@ auf, als ein Skript sie gegen etwas anderes hielt.
 
 ## Offene Punkte
 
-1. **Der Neugier-Bonus müsste abklingen.** Über 200 Durchgänge stieg die
-   Entropie von 0,20 auf 0,44 — der feste Bonus (`--entropie 0.01`) schiebt die
-   Politik immer weiter Richtung Zufall und deckelt damit vermutlich das
-   Ergebnis. Ein abklingender Wert ist der nächste offensichtliche Griff.
-2. **Selbstspiel.** Das Netz lernt gegen vier feste Bots und kann darum
-   höchstens so gut werden, wie die es fordern.
+1. **Wie man die 66 % weiter hebt, ist offen.** Die zwei naheliegenden Griffe
+   sind gebaut und gemessen — und beide bringen **nichts**:
+
+   | Variante | Seed 1 | Seed 2 | Seed 3 | Mittel |
+   | --- | --- | --- | --- | --- |
+   | A Neugier konstant | 66,3 | 68,3 | 65,4 | **66,7** |
+   | B Neugier 0,01 → 0,001 | 64,6 | 59,6 | 62,9 | 62,4 |
+   | C B + Liga 40 % | 63,8 | 62,1 | 65,0 | 63,6 |
+
+   Ein Einzellauf hatte vorher B 73,8 gegen A 70,0 gezeigt, also genau das
+   Gegenteil. Die Optionen (`--entropieEnde`, `--selbst`) bleiben in `rl.mjs`,
+   stehen aber standardmässig aus. Der nächste Griff müsste woanders ansetzen:
+   grösseres Netz, das Bild als Eingabe, oder eine bessere Verfahrensklasse
+   als REINFORCE (PPO mit Wertkopf).
 3. **`TEMPO` halbieren?** 0,05 → 0,025 hebt die Belohnungs-Trefferquote von
    75 % auf 88 %. Bewusst offengelassen: `TEMPO` bringt das Grinden bei, und
    das ist der Kern des Spiels. Eine Entscheidung, kein Fehler.

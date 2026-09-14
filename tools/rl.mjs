@@ -40,7 +40,13 @@
      --netze <n>        davon vom Netz gesteuert    (Standard 2)
      --gamma <x>        Abzinsung                   (Standard 0.99)
      --lr <x>           Lernrate                    (Standard 0.002)
-     --entropie <x>     Neugier-Bonus               (Standard 0.01)
+     --entropie <x>     Neugier-Bonus am ANFANG     (Standard 0.01)
+     --entropieEnde <x> … und am Ende, linear dazwischen. −1 heisst
+                        "bleibt konstant"           (Standard −1)
+     --selbst <x>       Anteil Gegner aus der eigenen Liga, 0…1
+                                                    (Standard 0)
+     --poolAlle <n>     alle n Durchgänge eine Kopie in die Liga
+                                                    (Standard 20)
      --raum 0|1         RAUM-Term benutzen          (Standard 0)
      --eval <n>         Matches je Gegner beim Messen (Standard 20)
      --evalEvery <n>    wie oft gemessen wird       (Standard 5)
@@ -55,6 +61,24 @@
      nicht, welche Strategie die beste ist, nur wie schnell man sie
      findet. Viermal so viel Erfahrung pro Sekunde ist der bessere
      Tausch. Mit --raum 1 kann man es gegenprüfen.
+
+   WARUM DER NEUGIER-BONUS ABKLINGEN SOLLTE
+     Er hält die Verteilung breit, damit das Netz überhaupt etwas
+     ausprobiert. Bleibt er konstant, schiebt er aber bis zum Schluss —
+     gemessen über 200 Durchgänge stieg die Entropie von 0,20 auf 0,44,
+     das Netz würfelte am Ende also deutlich MEHR als am Anfang. Am
+     Anfang ist das richtig, am Ende will man die gefundene Politik
+     scharfstellen. Darum läuft der Bonus linear von --entropie nach
+     --entropieEnde.
+
+   WARUM EINE LIGA UND NICHT DAS NETZ GEGEN SICH SELBST
+     Spielt die aktuelle Politik nur gegen sich selbst, jagt sie ein
+     bewegliches Ziel: beide Seiten ändern sich gleichzeitig, und was
+     gestern gut war, ist heute wertlos. Darum werden alle --poolAlle
+     Durchgänge EINGEFRORENE Kopien in eine Liga gelegt, und --selbst
+     bestimmt, wie oft ein Gegner daraus statt aus den Bots kommt. Die
+     Bots bleiben drin: sie sind die Messlatte und verhindern, dass die
+     Liga in eine gemeinsame Marotte abdriftet.
 
    WORAUF MAN ACHTEN MUSS
      Die Belohnung ist nicht das Ziel — GEWINNEN ist das Ziel. Darum
@@ -82,7 +106,8 @@ import { runMatch } from "./selfplay.mjs";
 
 function args(argv) {
   const o = { start: "", iterations: 40, matches: 20, players: 4, netze: 2,
-              gamma: 0.99, lr: 0.002, entropie: 0.01, raum: 0,
+              gamma: 0.99, lr: 0.002, entropie: 0.01, entropieEnde: -1,
+              selbst: 0, poolAlle: 20, raum: 0,
               eval: 20, evalEvery: 5, seed: 1, hidden: 24,
               out: "out/netz-rl.json" };
   for (let i = 0; i < argv.length; i++) {
@@ -104,10 +129,11 @@ function args(argv) {
    collectActions() wie jeden Bot, mit demselben Takt und derselben
    Zeitgrenze. Kein zweiter Spielablauf, der leise abweichen könnte.
    ------------------------------------------------------------------ */
-function sammeln(netz, opt, rng, gewichte, iteration) {
+function sammeln(netz, opt, rng, gewichte, iteration, liga) {
   const zw = neuerZwischenspeicher(netz);
   const botListe = Object.keys(AGENTS);
   const mitRaum = opt.raum !== 0;
+  let ausLiga = 0, ausBots = 0;
 
   const XS = [], AS = [], RS = [], enden = [];   // enden: Index nach jeder Bahn
   let siege = 0, tode = 0, matches = 0, sekunden = 0;
@@ -118,12 +144,32 @@ function sammeln(netz, opt, rng, gewichte, iteration) {
     const riders = [];
     for (let i = 0; i < opt.players; i++) {
       const istNetz = ((i + m) % opt.players) < opt.netze;
-      const bot = botListe[(i + m + iteration) % botListe.length];
-      riders.push({
-        name: istNetz ? "NETZ" : bot.toUpperCase().slice(0, 6),
-        color: COLORS[i % COLORS.length],
-        driver: istNetz ? { type: "agent", agent: "netz" } : { type: "agent", agent: bot },
-      });
+      if (istNetz) {
+        riders.push({ name: "NETZ", color: COLORS[i % COLORS.length],
+                      driver: { type: "agent", agent: "netz" } });
+        continue;
+      }
+
+      /* Gegner: entweder ein Bot oder eine eingefrorene Kopie aus der
+         Liga. Wichtig ist der andere Name — "alt" statt "netz" —, denn
+         daran hängt, WESSEN Züge gelernt werden. Von der Liga lernt
+         niemand, sie fährt nur mit. */
+      const ausDerLiga = liga.length > 0 && rng() < opt.selbst;
+      if (ausDerLiga) {
+        ausLiga++;
+        riders.push({
+          name: "ALT", color: COLORS[i % COLORS.length],
+          driver: { type: "agent", agent: "alt",
+                    fn: liga[Math.floor(rng() * liga.length)] },
+        });
+      } else {
+        ausBots++;
+        const bot = botListe[(i + m + iteration) % botListe.length];
+        riders.push({
+          name: bot.toUpperCase().slice(0, 6), color: COLORS[i % COLORS.length],
+          driver: { type: "agent", agent: bot },
+        });
+      }
     }
 
     const game = createGame({
@@ -196,14 +242,14 @@ function sammeln(netz, opt, rng, gewichte, iteration) {
   }
 
   return { XS, AS, RS, siege, tode, matches, sekunden,
-           netzBikes: enden.length };
+           netzBikes: enden.length, ausLiga, ausBots };
 }
 
 
 /* ------------------------------------------------------------------
    EIN LERNSCHRITT
    ------------------------------------------------------------------ */
-function lernen(netz, XS, AS, RS, opt, grad, zw) {
+function lernen(netz, XS, AS, RS, opt, grad, zw, bonus) {
   /* GRUNDLINIE: Erträge auf Mittelwert 0, Streuung 1. Ohne sie wird
      jeder Zug wahrscheinlicher, der überhaupt Belohnung brachte — auch
      ein unterdurchschnittlicher. */
@@ -233,7 +279,7 @@ function lernen(netz, XS, AS, RS, opt, grad, zw) {
          Durchgängen nur noch eine einzige Aktion und lernt nichts mehr
          dazu — es kann ja nichts anderes mehr ausprobieren. */
       zw.dRoh[k] = (p - (k === a ? 1 : 0)) * vorteil
-                 + opt.entropie * p * (Math.log(Math.max(p, 1e-12)) + H);
+                 + bonus * p * (Math.log(Math.max(p, 1e-12)) + H);
     }
     rueckwaerts(netz, x, zw, grad);
   }
@@ -292,13 +338,29 @@ async function main() {
       + netz.verdeckt + " → " + netz.aus + ")");
   }
 
+  const bonusStart = opt.entropie;
+  const bonusEnde = opt.entropieEnde < 0 ? opt.entropie : opt.entropieEnde;
+
   console.log("  " + opt.iterations + " Durchgänge × " + opt.matches
     + " Matches × " + opt.netze + "/" + opt.players + " Netz-Bikes"
     + "   ·   gamma " + opt.gamma + "   ·   lr " + opt.lr
     + "   ·   RAUM " + (opt.raum ? "an" : "aus"));
+  console.log("  Neugier " + bonusStart
+    + (bonusEnde === bonusStart ? " (konstant)" : " → " + bonusEnde)
+    + "   ·   Liga " + (opt.selbst > 0
+        ? (100 * opt.selbst).toFixed(0) + " % der Gegner, Kopie alle "
+          + opt.poolAlle + " Durchgänge"
+        : "aus"));
 
   const grad = neueGradienten(netz);
   const zw = neuerZwischenspeicher(netz);
+
+  /* Die Liga: eingefrorene Kopien früherer Politiken. Eine Kopie muss
+     es sein — eine Referenz auf `netz` würde sich mittrainieren und die
+     Liga wäre nur ein zweiter Name für "gegen sich selbst". */
+  const liga = [];
+  const einfrieren = () => liga.push(
+    netzAgent(ladeNetz(netzAlsJson(netz)), { name: "alt" }));
 
   const start = await messen(netz, opt);
   console.log("\n  VORHER   " + Object.entries(start.zeile)
@@ -307,14 +369,23 @@ async function main() {
 
   let bestes = netzAlsJson(netz), besterSchnitt = start.schnitt, besteIter = 0;
 
+  if (opt.selbst > 0) einfrieren();          // damit es von Anfang an geht
+
   console.log("\n  DURCHG.   ZÜGE   Ø LOHN   ENTROPIE   SIEGE   TODE"
     + "     ROOKIE GRINDER  HUNTER CRUISER  SCHNITT");
   console.log("  " + "-".repeat(88));
 
   const t0 = Date.now();
   for (let it = 1; it <= opt.iterations; it++) {
-    const erf = sammeln(netz, opt, rng, gewichte, it);
-    const st = lernen(netz, erf.XS, erf.AS, erf.RS, opt, grad, zw);
+    /* Neugier linear herunterfahren: am Anfang ausprobieren, am Ende
+       das Gefundene scharfstellen. */
+    const anteil = opt.iterations > 1 ? (it - 1) / (opt.iterations - 1) : 1;
+    const bonus = bonusStart + (bonusEnde - bonusStart) * anteil;
+
+    const erf = sammeln(netz, opt, rng, gewichte, it, liga);
+    const st = lernen(netz, erf.XS, erf.AS, erf.RS, opt, grad, zw, bonus);
+
+    if (opt.selbst > 0 && it % opt.poolAlle === 0) einfrieren();
 
     let zeile = "  " + String(it).padStart(6)
       + String(erf.XS.length).padStart(8)
