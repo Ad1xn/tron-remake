@@ -36,13 +36,27 @@ export function viewOfGame(game, cycleId) {
   if (!me) throw new Error("viewOfGame: kein Bike mit id " + cycleId);
 
   const l = look(game, me, game.arena);
-  const segs = [];
-  const push = (s) => {
-    if (Math.abs(s.x2 - s.x1) + Math.abs(s.y2 - s.y1) < 0.01) return;
-    segs.push({ x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2, cid: s.cid });
+
+  /* WÄNDE NUR AUF ZURUF.
+     Hier stand eine Schleife, die bei JEDEM Aufruf jedes Wandstück im
+     Spiel in ein frisches Objekt kopiert hat. encodeSensors() liest
+     view.walls aber kein einziges Mal — nur encodePatch() braucht sie.
+
+     Gemessen mit vier gleich starken Netzen: 1,4 ms je Physikschritt,
+     während dieselbe Engine mit den handgeschriebenen Bots 0,03 ms
+     braucht. Das Siebenundvierzigfache, und keine einzige Zeile davon
+     in der Engine — es war reines Kopieren von Wänden, die niemand
+     angesehen hat. Jetzt baut sie der Zugriff selbst, einmal. */
+  const segsBauen = () => {
+    const segs = [];
+    const push = (s) => {
+      if (Math.abs(s.x2 - s.x1) + Math.abs(s.y2 - s.y1) < 0.01) return;
+      segs.push({ x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2, cid: s.cid });
+    };
+    for (const s of game.rim) push(s);
+    for (const c of game.cycles) for (const s of c.walls) push(s);
+    return segs;
   };
-  for (const s of game.rim) push(s);
-  for (const c of game.cycles) for (const s of c.walls) push(s);
 
   return blick({
     arena: game.arena, time: game.time,
@@ -53,7 +67,7 @@ export function viewOfGame(game, cycleId) {
     others: game.cycles.filter((c) => c.id !== cycleId).map((c) => ({
       x: c.x, y: c.y, dir: c.dir, speed: c.speed, alive: c.alive,
     })),
-    walls: segs,
+    walls: segsBauen,
     zone: { active: game.winZone.active, x: game.winZone.x, y: game.winZone.y, r: game.winZone.r },
     rays: { front: l.front.dist, left: l.left.dist, right: l.right.dist },
   });
@@ -95,8 +109,21 @@ function worldOf(self, o) {
   };
 }
 
-/* Gemeinsame Rechenhilfen an den Blick hängen. */
+/* Gemeinsame Rechenhilfen an den Blick hängen.
+
+   Ist `walls` eine Funktion, wird daraus ein Zugriff, der sie beim
+   ersten Lesen ausführt und sich das Ergebnis merkt. Für jeden
+   Aufrufer sieht view.walls danach aus wie ein ganz normales Array —
+   nur dass es gar nicht erst entsteht, wenn niemand hinsieht. */
 function blick(v) {
+  if (typeof v.walls === "function") {
+    const bauen = v.walls;
+    let gebaut = null;
+    Object.defineProperty(v, "walls", {
+      get() { return gebaut || (gebaut = bauen()); },
+      enumerable: true, configurable: true,
+    });
+  }
   const d = AXES[v.self.dir];
   v.ego = (dx, dy) => ({
     forward: dx * d.x + dy * d.y,
