@@ -254,3 +254,8 @@ body.replaying .keys.replay { display: flex; }
   text-shadow: 0 0 12px rgba(120, 170, 255, 0.5);
   pointer-events: none;
 }
+
+/* Verweis auf die KI-Werkbank in der Tastenzeile — ohne ihn findet man
+   die zweite Seite nur, wenn man die Adresse kennt. */
+.keys a { color: var(--cap); text-decoration: none; }
+.keys a:hover { color: #fff; text-decoration: underline; }
