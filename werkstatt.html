@@ -32,6 +32,12 @@
 
     <span class="trenner"></span>
     <label class="schalter"><input type="checkbox" id="zusehen" checked> Schaukampf zeigen</label>
+
+    <span class="trenner"></span>
+    <button id="sichern" title="Das beste Netz sichern — danach in index.html?netz=werkbank zu sehen">★ Bestes sichern</button>
+    <button id="laden" title="Ein gesichertes Netz als Stammvater einer neuen Population">Netz laden</button>
+    <input type="file" id="datei" accept=".json" hidden>
+    <b id="sicher-info"></b>
   </header>
 
   <!-- ========== Kennzahlen ========== -->
@@ -67,6 +73,18 @@
     </aside>
   </main>
 
+  <!-- Ahnengalerie -->
+  <section class="population">
+    <h2>AHNENGALERIE
+      <i>die Spitze gegen ihre eingefrorenen Vorfahren — hier muss der Fortschritt stehen</i>
+      <button id="galerie-messen" class="klein">messen</button>
+    </h2>
+    <div id="galerie" class="ahnen">
+      <span class="hinweis">Noch nicht gemessen. Kostet ein paar hundert Matches und bremst
+        das Training, darum nur auf Zuruf.</span>
+    </div>
+  </section>
+
   <!-- Population -->
   <section class="population">
     <h2>POPULATION <i id="pop-info">nach Fitness sortiert — grün ist besser</i></h2>
@@ -76,7 +94,8 @@
   <div class="fuss">
     <span><b>Keine handgeschriebenen Gegner.</b> Die Netze fahren ausschliesslich gegeneinander.</span>
     <span>Messlatte ist der <b>Urahn</b> — der Beste der Generation 0, für immer eingefroren.</span>
-    <span><a href="index.html">Spiel</a> · <a href="index.html?replay">Aufnahmen</a></span>
+    <span><a href="index.html">Spiel</a> · <a href="index.html?replay">Aufnahmen</a>
+      · <a href="index.html?netz=werkbank">gesichertes Netz ansehen</a></span>
   </div>
 
   <script type="module" src="src/werkstatt.js"></script>

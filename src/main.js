@@ -286,10 +286,21 @@ const netzPfad = suche.get("netz");
 if (netzPfad) {
   try {
     const { ladeNetz, netzAgent } = await import("./net.js");
-    const json = await (await fetch(netzPfad, { cache: "no-store" })).json();
+
+    /* "werkbank" ist kein Pfad, sondern der Speicherplatz, in den die
+       Werkbank ihr bestes Netz legt. Beide Seiten liegen auf demselben
+       Server, also findet index.html den localStorage der Werkbank —
+       ein Weg vom Trainieren zum Zusehen ganz ohne Datei. */
+    const json = netzPfad === "werkbank"
+      ? JSON.parse(localStorage.getItem("tron-netz-werkbank")
+          || (() => { throw new Error("nichts in der Werkbank gesichert"); })())
+      : await (await fetch(netzPfad, { cache: "no-store" })).json();
     AGENTS.netz = netzAgent(ladeNetz(json), { name: "netz" });
     LADDER = ["netz", ...LADDER];
-    console.log("Netz geladen:", netzPfad, json.lehrer ? "(ahmt " + json.lehrer + " nach)" : "");
+    console.log("Netz geladen:", netzPfad,
+      json.lehrer ? "(ahmt " + json.lehrer + " nach)"
+      : json.verfahren === "evolution" ? "(Evolution, Generation " + json.generation + ")"
+      : json.verfahren ? "(" + json.verfahren + ")" : "");
   } catch (err) {
     /* Lieber ohne Netz weiterspielen als eine schwarze Seite zeigen. */
     console.warn("Netz konnte nicht geladen werden:", err.message);

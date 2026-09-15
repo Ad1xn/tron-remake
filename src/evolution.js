@@ -294,6 +294,20 @@ export function erzeugeEvolution(optionen = {}) {
       return verlauf[verlauf.length - 1];
     },
 
+    /* Ein mitgebrachtes Netz als Saat: Platz 1 bekommt es unverändert,
+       der Rest sind Mutationen davon. Damit kann man an einem
+       gespeicherten Netz weiterarbeiten, statt wieder bei Zufall
+       anzufangen. Generation und Verlauf bleiben stehen — es ist
+       dieselbe Linie, nur mit neuem Stammvater. */
+    saeen(netz) {
+      const stamm = { netz: ladeNetz(netzAlsJson(netz)), fitness: 0, siege: 0,
+                      matches: 0, zeit: 0, strecke: 0, herkunft: "saat", alter: 0 };
+      population = [stamm];
+      while (population.length < opt.groesse) population.push(mutiere(stamm));
+      matchNr = 0;
+      bewertung = [];
+    },
+
     /* Für die Anzeige: ein Match als LAUFENDES Spiel, das die
        Oberfläche Schritt für Schritt zeichnen kann. */
     schaukampf(indizes, seed) {

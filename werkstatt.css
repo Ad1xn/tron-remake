@@ -138,3 +138,39 @@ body.werkbank {
 }
 .fuss b { color: var(--dim); }
 .fuss a { color: var(--dim); }
+
+/* ---------------- Ahnengalerie ---------------- */
+.ahnen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.4rem;
+  align-items: stretch;
+}
+.ahnen .hinweis { color: #3d4d70; font-size: 0.62rem; padding: 0.2rem; }
+.ahn {
+  min-width: 4.6rem;
+  border-radius: 0.2rem;
+  padding: 0.28rem 0.4rem;
+  border: 1px solid transparent;
+  line-height: 1.25;
+}
+.ahn.urahn { border-color: #2c4a7a; }
+.ahn .gen { font-size: 0.55rem; opacity: 0.75; display: block; }
+.ahn .quote { font-weight: 700; font-size: 0.82rem; }
+.ahn .balken { display: block; height: 3px; margin-top: 0.2rem; background: #0d1729; border-radius: 2px; }
+.ahn .balken i { display: block; height: 100%; border-radius: 2px; background: #7dffa0; }
+
+button.klein {
+  font: inherit;
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: var(--ink);
+  background: #05070f;
+  border: 1px solid #16233f;
+  border-radius: 0.2rem;
+  padding: 0.1rem 0.4rem;
+  cursor: pointer;
+  margin-left: auto;
+}
+button.klein:hover { border-color: var(--cap); color: #fff; }

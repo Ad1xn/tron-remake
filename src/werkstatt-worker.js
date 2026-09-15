@@ -17,8 +17,8 @@
    importmap, und die gilt im Worker nicht. Alles hier ist reine Logik.
    ========================================================================= */
 
-import { erzeugeEvolution } from "./evolution.js";
-import { netzAlsJson } from "./net.js";
+import { erzeugeEvolution, kampf } from "./evolution.js";
+import { netzAlsJson, ladeNetz } from "./net.js";
 
 let evo = null;
 let laeuft = false;
@@ -60,15 +60,31 @@ function generationFertig() {
   });
 }
 
-/* Die Arbeitsschleife. setTimeout(0) statt while(true), damit
-   Nachrichten (etwa "anhalten") überhaupt ankommen können. */
+/* NACHGEBEN, OHNE GEDROSSELT ZU WERDEN.
+   Eine Endlosschleife würde keine Nachricht mehr durchlassen — "anhalten"
+   käme nie an. Also muss zwischen den Zeitscheiben die Warteschlange
+   drankommen.
+
+   Der naheliegende Weg, setTimeout(…, 0), ist der falsche: Browser
+   dehnen Timer in Tabs, die im Hintergrund liegen, auf bis zu eine
+   Sekunde. Gemessen ist der Durchsatz dadurch von 25 auf 7 Matches je
+   Sekunde gefallen, sobald das Fenster nicht mehr sichtbar war — und
+   genau dann soll das Training ja durchlaufen.
+
+   Ein MessageChannel wird nicht gedrosselt: die Nachricht an den
+   eigenen Port kommt sofort zurück und lässt die Warteschlange trotzdem
+   dazwischen. */
+const kanal = new MessageChannel();
+kanal.port1.onmessage = () => arbeite();
+const gleichWieder = () => kanal.port2.postMessage(0);
+
 function arbeite() {
   if (!laeuft || !evo) return;
 
   /* Ein Zeitscheibchen rechnen, dann die Warteschlange abarbeiten
-     lassen. 40 ms ist lang genug, dass der Aufwand je Scheibe nicht
-     auffällt, und kurz genug für eine flüssige Anzeige. */
-  const bis = performance.now() + 40;
+     lassen. Lang genug, dass der Aufwand je Scheibe nicht auffällt,
+     kurz genug für eine flüssige Anzeige. */
+  const bis = performance.now() + 60;
   let seit = 0;
   while (performance.now() < bis) {
     if (evo.fertig) { generationFertig(); break; }
@@ -78,7 +94,7 @@ function arbeite() {
   }
   if (seit) melde("fortschritt");
 
-  setTimeout(arbeite, 0);
+  gleichWieder();
 }
 
 onmessage = (e) => {
@@ -105,6 +121,60 @@ onmessage = (e) => {
     if (!evo) return;
     while (!evo.fertig) { evo.naechsterKampf(); matchesGesamt++; }
     generationFertig();
+    return;
+  }
+
+  /* DIE AHNENGALERIE — die aktuelle Spitze gegen jeden eingefrorenen
+     Vorfahren einzeln. Das ist der ehrliche Fortschrittsbericht ohne
+     handgeschriebene Gegner: gegen einen Ahnen aus Generation 10 sollte
+     man besser abschneiden als gegen einen aus Generation 60.
+
+     Läuft auf Zuruf und nicht bei jeder Generation — es sind Ahnen mal
+     Matches zusätzliche Spiele, und die würden das Training bremsen. */
+  if (m.typ === "galerie") {
+    if (!evo || !evo.ahnen.length) { postMessage({ typ: "galerie", zeilen: [] }); return; }
+    const beste = evo.population[0].netz;
+    const proAhn = m.matches || 12;
+    const zeilen = [];
+
+    const messe = (gegner) => {
+      let siege = 0;
+      for (let k = 0; k < proAhn; k++) {
+        /* 1v1, Seiten getauscht, Startplätze gestreut — dieselbe
+           Sorgfalt wie beim Urahn, sonst misst man ein Match mehrfach. */
+        const feld = k % 2 === 0 ? [beste, gegner] : [gegner, beste];
+        const erg = kampf(feld, 700000 + k, evo.optionen.maxTicks, k);
+        if (erg.sieger === (k % 2 === 0 ? 0 : 1)) siege++;
+      }
+      return siege / proAhn;
+    };
+
+    if (evo.urahn) {
+      zeilen.push({ generation: evo.urahn.generation, quote: messe(evo.urahn.netz), urahn: true });
+    }
+    for (const a of evo.ahnen) {
+      if (evo.urahn && a.generation === evo.urahn.generation) continue;
+      zeilen.push({ generation: a.generation, quote: messe(a.netz), urahn: false });
+    }
+    zeilen.sort((a, b) => a.generation - b.generation);
+    postMessage({ typ: "galerie", zeilen, generation: evo.generation,
+                  matchNr: evo.matchNr, matchesGesamt });
+    return;
+  }
+
+  /* Ein gespeichertes Netz als Startpunkt: die ganze Population wird
+     aus Mutationen davon aufgebaut. So kann man an einem Netz
+     weiterarbeiten, statt immer bei Zufall anzufangen. */
+  if (m.typ === "saatgut") {
+    if (!evo) return;
+    const saat = ladeNetz(m.netz);
+    evo.saeen(saat);
+    melde("aufgesetzt", {
+      population: kennzahlen(),
+      spitze: evo.population.slice(0, Math.max(evo.optionen.proMatch, 8))
+        .map((x) => netzAlsJson(x.netz)),
+      optionen: evo.optionen, verlauf: evo.verlauf, mutation: evo.mutationsstaerke,
+    });
     return;
   }
 };

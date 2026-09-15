@@ -22,7 +22,7 @@ import { createRenderer } from "./render3d.js";
 import { collectActions } from "./agents.js";
 import { step } from "./engine.js";
 import { viewOfGame, encodeSensors } from "./features.js";
-import { ladeNetz } from "./net.js";
+import { ladeNetz, netzAlsJson } from "./net.js";
 import { erzeugeNetzbild } from "./netzbild.js";
 import { RULES } from "./config.js";
 
@@ -63,6 +63,8 @@ worker.onmessage = (e) => {
     tempoFenster.push({ t: performance.now(), n: m.matchesGesamt - zustand.matchesGesamt });
   }
   zustand.matchesGesamt = m.matchesGesamt;
+
+  if (m.typ === "galerie") { zeichneGalerie(m.zeilen); return; }
 
   if (m.typ === "aufgesetzt" || m.typ === "generation") {
     zustand.population = m.population;
@@ -294,6 +296,81 @@ el("board").onclick = () => {
   const i = lebend.findIndex((c) => c.id === view.followId);
   view.follow(lebend[(i + 1) % lebend.length].id);
 };
+
+/* ------------------------------------------------------------------
+   SICHERN UND LADEN
+   ------------------------------------------------------------------
+   Gesichert wird in den localStorage DIESES Ursprungs — und weil
+   werkstatt.html und index.html auf demselben Server liegen, findet das
+   Spiel es dort wieder:
+
+       index.html?netz=werkbank
+
+   Zusätzlich fällt eine Datei heraus, damit man ein Netz behalten oder
+   weitergeben kann. Der Speicher ist der verlässliche Weg: ein
+   Herunterladen kann die Vorschau-Kachel blockieren, localStorage nie.
+   ------------------------------------------------------------------ */
+export const SPEICHER = "tron-netz-werkbank";
+
+el("sichern").onclick = () => {
+  const netz = zustand.spitze[0];
+  if (!netz) return;
+  const daten = {
+    ...netzAlsJson(netz),
+    verfahren: "evolution",
+    generation: zustand.generation,
+    fitness: zustand.verlauf[zustand.verlauf.length - 1]?.beste ?? null,
+    gesichert: new Date().toISOString(),
+  };
+  const text = JSON.stringify(daten);
+  try { localStorage.setItem(SPEICHER, text); } catch { /* privates Fenster */ }
+
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  a.download = "netz-gen" + zustand.generation + ".json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+
+  el("sicher-info").textContent =
+    "gesichert · Generation " + zustand.generation + " → index.html?netz=werkbank";
+};
+
+el("laden").onclick = () => el("datei").click();
+el("datei").onchange = async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  try {
+    const json = JSON.parse(await f.text());
+    worker.postMessage({ typ: "saatgut", netz: json });
+    el("sicher-info").textContent = "geladen: " + f.name + " — Population neu gesät";
+  } catch (err) {
+    el("sicher-info").textContent = "geht nicht: " + err.message;
+  }
+  e.target.value = "";
+};
+
+el("galerie-messen").onclick = () => {
+  el("galerie").innerHTML = '<span class="hinweis">misst …</span>';
+  worker.postMessage({ typ: "galerie", matches: 12 });
+};
+
+/* Die Galerie: je Ahn eine Kachel mit der Quote der aktuellen Spitze
+   gegen ihn. Gegen alte Ahnen soll sie hoch sein, gegen junge niedrig —
+   liest sich das Bild andersherum, steht die Population still. */
+function zeichneGalerie(zeilen) {
+  if (!zeilen.length) {
+    el("galerie").innerHTML =
+      '<span class="hinweis">Noch keine Vorfahren eingefroren — das passiert alle '
+      + (zustand.optionen?.ahnenAlle ?? 10) + " Generationen.</span>";
+    return;
+  }
+  el("galerie").innerHTML = zeilen.map((z) => `
+    <div class="ahn${z.urahn ? " urahn" : ""}">
+      <span class="gen">GEN ${z.generation}${z.urahn ? " · URAHN" : ""}</span>
+      <span class="quote" style="color:${farbe(z.quote)}">${(100 * z.quote).toFixed(0)} %</span>
+      <span class="balken"><i style="width:${(100 * z.quote).toFixed(0)}%"></i></span>
+    </div>`).join("");
+}
 
 window.addEventListener("resize", () => { view.resize(); zeichneKurve(); });
 
