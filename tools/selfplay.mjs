@@ -15,9 +15,10 @@
      node tools/selfplay.mjs                             1v1, cruiser vs grinder
      node tools/selfplay.mjs --matches 500               mehr Runden
      node tools/selfplay.mjs --agents grinder,hunter
-     node tools/selfplay.mjs --players 3                 1v1v1 (Feld wächst mit)
+     node tools/selfplay.mjs --players 3                 1v1v1
      node tools/selfplay.mjs --matrix                    jeder gegen jeden, 1v1
-     node tools/selfplay.mjs --replays out/replays       Bänder für arena.html
+     node tools/selfplay.mjs --mode fortress --players 4 zwei Mannschaften
+     node tools/selfplay.mjs --replays out/replays       Bänder für index.html?replay
      node tools/selfplay.mjs --jsonl daten/spiele.jsonl  Zug für Zug zum Lernen
      node tools/selfplay.mjs --help
 
@@ -30,10 +31,20 @@
      --maxTicks <zahl>  Notbremse gegen Endlos-Runden (Standard 20000
                         Schritte = 160 s bei 125 Hz)
      --matrix           alle 1v1-Paarungen durchspielen
+     --mode <name>      lms | lts | fortress | sumo   (Standard lms)
+
+   MODI UND MANNSCHAFTEN
+     lms und sumo sind Alle-gegen-alle: es gewinnt, wer übrig bleibt.
+     lts und fortress sind Mannschaftsmodi. Die Engine verteilt ohne
+     weiteres Zutun Fahrer i auf Team i % 2 — mit --agents a,b
+     --players 4 steht also zweimal a gegen zweimal b. In der Tabelle
+     heisst die erste Spalte dann SEITE statt SIEGE: gezählt wird, in
+     wie vielen Matches der Agent auf der Siegerseite stand, pro Match
+     höchstens einmal.
 
    AUFNEHMEN — zwei Sorten, die man nicht verwechseln darf
      --replays <ordner> BÄNDER zum Anschauen: winzig, weil nur seed +
-                        Richtungen. Dazu eine index.json für arena.html.
+                        Richtungen. Dazu eine index.json für index.html?replay.
      --replaysN <zahl>  wie viele Bänder pro Paarung (Standard 20)
      --jsonl <datei>    TRAININGSDATEN: pro Zug eine Zeile
                         { match, tick, agent, obs, action }. Das ist das
@@ -52,18 +63,18 @@
    ========================================================================= */
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { createGame, step, observe } from "../src/engine.js";
 import { collectActions, AGENTS } from "../src/agents.js";
 import { createRecorder, verifyTape } from "../src/replay.js";
-import { arenaFor, RULES } from "../src/config.js";
+import { arenaFor, RULES, MODES, MODE_LIST } from "../src/config.js";
 
 const COLORS = [0x22d3ee, 0xfb923c, 0xa855f7, 0x4ade80, 0xf472b6, 0xfacc15];
 
 /* Alle geschriebenen Bänder, für das Inhaltsverzeichnis am Ende. Ein
-   statischer Webserver kann keinen Ordner auflisten — arena.html liest
+   statischer Webserver kann keinen Ordner auflisten — index.html?replay liest
    deshalb diese index.json. */
 const WRITTEN = [];
 
@@ -75,7 +86,8 @@ function parseArgs(argv) {
   const out = {
     n: 200, agents: ["cruiser", "grinder"], players: 0, seed: 1, level: 1,
     field: 0, maxTicks: 20000, matrix: false, help: false,
-    replays: "", replaysN: 20,          // Bänder für arena.html
+    mode: RULES.MODE,                   // lms | lts | fortress | sumo
+    replays: "", replaysN: 20,          // Bänder für index.html?replay
     jsonl: "", record: "",              // Trainingsdaten, optional auf einen Agenten
   };
   for (let i = 0; i < argv.length; i++) {
@@ -83,6 +95,7 @@ function parseArgs(argv) {
     const next = () => argv[++i];
     if (a === "--help" || a === "-h") out.help = true;
     else if (a === "--matrix") out.matrix = true;
+    else if (a === "--mode") out.mode = next();
     else if (a === "--n" || a === "--matches") out.n = Number(next());
     else if (a === "--agents") out.agents = next().split(",").map((s) => s.trim());
     else if (a === "--players") out.players = Number(next());
@@ -109,7 +122,7 @@ function parseArgs(argv) {
    ------------------------------------------------------------------ */
 export async function runMatch({
   agents, seed, level = 1, field = 0, maxTicks = 20000, record = false, meta = {},
-  onMove = null,
+  mode = RULES.MODE, onMove = null,
 }) {
   // Ein Eintrag ist entweder ein Name aus AGENTS ("survivor") oder direkt
   // eine Funktion — damit ein trainiertes Netz später ohne Umbau hier
@@ -126,7 +139,12 @@ export async function runMatch({
     };
   });
 
-  const game = createGame({ riders, seed, arena: field || arenaFor(riders.length) });
+  /* Die Mannschaften macht die Engine: ohne rider.team bekommt Fahrer i
+     das Team i % 2. Mit --agents a,b --players 4 heisst das a,b,a,b und
+     damit Team 0 = zweimal a gegen Team 1 = zweimal b — genau die
+     Paarung, die man messen will. */
+  const game = createGame({ riders, seed, mode, arena: field || arenaFor() });
+  const teamPlay = game.modeDef.teams !== "solo";
   const rec = record ? createRecorder(game, meta) : null;
 
   while (game.phase === "running" && game.tick < maxTicks) {
@@ -154,9 +172,21 @@ export async function runMatch({
     step(game, actions);
   }
 
-  // Platzierung: Überlebende zuerst, dann die, die am längsten durchhielten.
+  /* WER HAT GEWONNEN — die Engine fragen, NICHT nachzählen, wer lebt.
+     Vorher stand hier "genau ein Überlebender = Sieger". Das gilt nur,
+     wenn die Runde durch Ausscheiden endet. Entscheidet die Win-Zone,
+     leben noch alle — 13 von 20 lms-Matches wurden dadurch als
+     Unentschieden gezählt, obwohl es jedes Mal einen Sieger gab. Für
+     einen Messstand ist das tödlich: die Latte lag im Rauschen. */
+  const winner = game.winner;
+  const winnerTeam = game.winnerTeam;
+
+  /* Platzierung: der Sieger zuerst, dann die übrigen Überlebenden, dann
+     die anderen nach Todeszeitpunkt. */
   const ranked = [...game.cycles].sort((a, b) =>
-    (b.alive - a.alive) || (b.deathTime - a.deathTime));
+    ((b === winner) - (a === winner))
+    || (b.alive - a.alive)
+    || (b.deathTime - a.deathTime));
   const placement = new Map();
   ranked.forEach((c, i) => placement.set(c.id, i + 1));
 
@@ -167,10 +197,17 @@ export async function runMatch({
     ticks: game.tick,
     seconds: game.time,
     truncated: game.phase === "running",     // Notbremse hat gegriffen
-    winner: survivors.length === 1 ? survivors[0] : null,
+    mode,
+    teamPlay,
+    winner,
+    winnerAgent: winner ? winner.driver.agent : null,
+    /* In lts und fortress gewinnt eine SEITE — dort können mehrere übrig
+       bleiben, und "der einzige Überlebende" gibt es nicht. */
+    winnerTeam,
+    survivors: survivors.length,
     bikes: game.cycles.map((c) => ({
       name: c.name, agent: c.driver.agent, score: c.score, kills: c.kills,
-      alive: c.alive, place: placement.get(c.id),
+      team: c.team, alive: c.alive, place: placement.get(c.id),
       rubberUsed: c.rubberUsed, topSpeed: c.topSpeed, distance: c.distance,
     })),
   };
@@ -215,6 +252,7 @@ async function runSeries(agents, opt) {
       level: opt.level,
       field: opt.field,
       maxTicks: opt.maxTicks,
+      mode: opt.mode,
       record: wantTape,
       meta: { label: agents.join(" vs ") + " #" + m },
       onMove,
@@ -239,7 +277,16 @@ async function runSeries(agents, opt) {
       s.top = Math.max(s.top, b.topSpeed);
       if (b.alive) s.alive++;
     }
-    if (res.winner) bump(res.winner.driver?.agent ?? res.bikes.find((b) => b.alive).agent).wins++;
+    /* WER HAT GEWONNEN?
+       Im Alle-gegen-alle der einzige Überlebende. In den Mannschafts-
+       modi die Seite — und dort zählt pro Match jeder Agent HÖCHSTENS
+       EINMAL: stünden zwei Fahrer derselben Sorte auf der Siegerseite,
+       stünden sonst 200 % in der Tabelle. */
+    const sieger = res.teamPlay
+      ? new Set(res.bikes.filter((b) => b.team === res.winnerTeam).map((b) => b.agent))
+      : new Set(res.winnerAgent ? [res.winnerAgent] : []);
+
+    if (sieger.size) for (const a of sieger) bump(a).wins++;
     else for (const b of res.bikes) bump(b.agent).draws += 1 / res.bikes.length;
 
     if (res.tape) {
@@ -249,7 +296,10 @@ async function runSeries(agents, opt) {
         `${agents.join("-")}-${String(m).padStart(4, "0")}.json`);
       writeFileSync(file, JSON.stringify(res.tape));
       WRITTEN.push({
-        file: file.slice(dir.length + 1),
+        /* basename statt file.slice(dir.length + 1): endet der Ordner auf
+           einen Schrägstrich, kürzt join() ihn weg und die Rechnung
+           schnitt den ersten Buchstaben des Dateinamens mit ab. */
+        file: basename(file),
         label: res.tape.label,
         seed: res.tape.seed,
         players: res.tape.riders.length,
@@ -292,13 +342,16 @@ const num = (s, w) => String(s).padStart(w);
 
 function printSeries(series, opt) {
   const n = opt.n;
-  const field = (opt.field || arenaFor(series.agents.length)) + " m";
+  const field = (opt.field || arenaFor()) + " m";
+  const def = MODES[opt.mode];
 
   console.log("");
-  console.log("  " + series.agents.join("  vs  ")
-    + `   ·   ${n} Matches   ·   Feld ${field}   ·   Seeds ${opt.seed}…${opt.seed + n - 1}`);
+  console.log("  " + series.agents.join(def.teams === "solo" ? "  vs  " : "  gegen  ")
+    + `   ·   ${def.name}   ·   ${n} Matches`
+    + `   ·   Feld ${field}   ·   Seeds ${opt.seed}…${opt.seed + n - 1}`);
   console.log("  " + "-".repeat(72));
-  console.log("  " + pad("AGENT", 12) + num("SIEGE", 7) + num("%", 8)
+  console.log("  " + pad("AGENT", 12)
+    + num(def.teams === "solo" ? "SIEGE" : "SEITE", 7) + num("%", 8)
     + num("PLATZ", 8) + num("SCORE", 8) + num("KILLS", 7)
     + num("RUBBER", 8) + num("SPITZE", 8));
 
@@ -316,6 +369,9 @@ function printSeries(series, opt) {
 
   const draws = series.rows.reduce((a, r) => a + r.draws, 0);
   console.log("  " + "-".repeat(72));
+  if (def.teams !== "solo") {
+    console.log("  SEITE = Matches, in denen der Agent auf der Siegerseite stand.");
+  }
   console.log("  " + pad("Unentschieden", 16) + Math.round(draws)
     + "   ·   Ø Runde " + series.avgSeconds.toFixed(1) + " s"
     + " (" + Math.round(series.avgTicks) + " Schritte)"
@@ -337,10 +393,14 @@ async function main() {
     console.log(
       "\n  node tools/selfplay.mjs [--matches 200] [--agents a,b] [--players 2]"
       + "\n                          [--seed 1] [--matrix] [--field 32]"
+      + "\n                          [--mode lms|lts|fortress|sumo]"
       + "\n                          [--replays ordner] [--replaysN 20]"
       + "\n                          [--jsonl datei] [--record agent]"
       + "\n\n  Verfügbare Agenten: " + Object.keys(AGENTS).join(", ")
-      + "\n\n  --replays = Bänder zum Anschauen (arena.html)"
+      + "\n  Verfügbare Modi:    " + MODE_LIST.join(", ")
+      + "\n  lts und fortress sind Mannschaftsmodi — dort will man --players 4"
+      + "\n  oder mehr, sonst ist es ein Team aus einer Person."
+      + "\n\n  --replays = Bänder zum Anschauen (index.html?replay)"
       + "\n  --jsonl   = Zug für Zug zum Lernen (gross)\n");
     return;
   }
@@ -351,6 +411,11 @@ async function main() {
     agents = Array.from({ length: opt.players }, (_, i) => opt.agents[i % opt.agents.length]);
   } else if (opt.players > 0) {
     agents = agents.slice(0, opt.players);
+  }
+
+  if (!MODES[opt.mode]) {
+    console.error(`Kein Modus namens "${opt.mode}". Da sind: ` + MODE_LIST.join(", "));
+    process.exit(1);
   }
 
   for (const a of agents) {
@@ -384,7 +449,7 @@ async function main() {
   console.log("");
 }
 
-/* Inhaltsverzeichnis für arena.html. Ein schon vorhandenes wird ERGÄNZT,
+/* Inhaltsverzeichnis für index.html?replay. Ein schon vorhandenes wird ERGÄNZT,
    nicht überschrieben — sonst verliert man beim zweiten Lauf in denselben
    Ordner die Bänder des ersten. */
 function writeManifest(opt) {
@@ -403,8 +468,8 @@ function writeManifest(opt) {
     files,
   }, null, 2));
   console.log("\n  " + path + "  (" + files.length + " Bänder, " + WRITTEN.length + " neu)");
-  console.log("  Anschauen:  arena.html"
-    + (opt.replays === "out/replays" ? "" : "?dir=" + opt.replays));
+  console.log("  Anschauen:  index.html?replay"
+    + (opt.replays === "out/replays" ? "" : "=" + opt.replays));
 }
 
 /* Nur starten, wenn die Datei WIRKLICH aufgerufen wurde. Wer sie nur

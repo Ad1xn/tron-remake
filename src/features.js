@@ -36,13 +36,27 @@ export function viewOfGame(game, cycleId) {
   if (!me) throw new Error("viewOfGame: kein Bike mit id " + cycleId);
 
   const l = look(game, me, game.arena);
-  const segs = [];
-  const push = (s) => {
-    if (Math.abs(s.x2 - s.x1) + Math.abs(s.y2 - s.y1) < 0.01) return;
-    segs.push({ x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2, cid: s.cid });
+
+  /* WÄNDE NUR AUF ZURUF.
+     Hier stand eine Schleife, die bei JEDEM Aufruf jedes Wandstück im
+     Spiel in ein frisches Objekt kopiert hat. encodeSensors() liest
+     view.walls aber kein einziges Mal — nur encodePatch() braucht sie.
+
+     Gemessen mit vier gleich starken Netzen: 1,4 ms je Physikschritt,
+     während dieselbe Engine mit den handgeschriebenen Bots 0,03 ms
+     braucht. Das Siebenundvierzigfache, und keine einzige Zeile davon
+     in der Engine — es war reines Kopieren von Wänden, die niemand
+     angesehen hat. Jetzt baut sie der Zugriff selbst, einmal. */
+  const segsBauen = () => {
+    const segs = [];
+    const push = (s) => {
+      if (Math.abs(s.x2 - s.x1) + Math.abs(s.y2 - s.y1) < 0.01) return;
+      segs.push({ x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2, cid: s.cid });
+    };
+    for (const s of game.rim) push(s);
+    for (const c of game.cycles) for (const s of c.walls) push(s);
+    return segs;
   };
-  for (const s of game.rim) push(s);
-  for (const c of game.cycles) for (const s of c.walls) push(s);
 
   return blick({
     arena: game.arena, time: game.time,
@@ -53,8 +67,8 @@ export function viewOfGame(game, cycleId) {
     others: game.cycles.filter((c) => c.id !== cycleId).map((c) => ({
       x: c.x, y: c.y, dir: c.dir, speed: c.speed, alive: c.alive,
     })),
-    walls: segs,
-    zone: { active: game.zone.active, x: game.zone.x, y: game.zone.y, r: game.zone.r },
+    walls: segsBauen,
+    zone: { active: game.winZone.active, x: game.winZone.x, y: game.winZone.y, r: game.winZone.r },
     rays: { front: l.front.dist, left: l.left.dist, right: l.right.dist },
   });
 }
@@ -81,7 +95,7 @@ export function viewOfObs(obs) {
       speed: o.speed, alive: o.alive,
     })),
     walls: segs,
-    zone: { active: obs.zone.active, x: obs.zone.x, y: obs.zone.y, r: obs.zone.r },
+    zone: { active: obs.winZone.active, x: obs.winZone.x, y: obs.winZone.y, r: obs.winZone.r },
     rays: { front: obs.front.dist, left: obs.left.dist, right: obs.right.dist },
   });
 }
@@ -95,8 +109,21 @@ function worldOf(self, o) {
   };
 }
 
-/* Gemeinsame Rechenhilfen an den Blick hängen. */
+/* Gemeinsame Rechenhilfen an den Blick hängen.
+
+   Ist `walls` eine Funktion, wird daraus ein Zugriff, der sie beim
+   ersten Lesen ausführt und sich das Ergebnis merkt. Für jeden
+   Aufrufer sieht view.walls danach aus wie ein ganz normales Array —
+   nur dass es gar nicht erst entsteht, wenn niemand hinsieht. */
 function blick(v) {
+  if (typeof v.walls === "function") {
+    const bauen = v.walls;
+    let gebaut = null;
+    Object.defineProperty(v, "walls", {
+      get() { return gebaut || (gebaut = bauen()); },
+      enumerable: true, configurable: true,
+    });
+  }
   const d = AXES[v.self.dir];
   v.ego = (dx, dy) => ({
     forward: dx * d.x + dy * d.y,
@@ -165,8 +192,20 @@ export function encodeSensors(view) {
   out[k++] = t(view.rays.right);
 
   out[k++] = s.rubber / RULES.RUBBER;
-  out[k++] = Math.min((s.speed - RULES.SPEED_MIN) / (RULES.SPEED_MAX - RULES.SPEED_MIN), 1);
-  out[k++] = s.brake / RULES.BRAKE;
+
+  /* Tempo als VIELFACHES des Grundtempos — NICHT gegen SPEED_MAX.
+     Gemessen über 270000 Schritte (4 Bots, 12 Seeds): p50 = 30,0 (also
+     genau SPEED), p99 = 46,8, hoechster Wert 61,3. SPEED_MAX ist 200,
+     weil das Original dort "unbegrenzt" meint — gegen 200 normiert
+     laege das ganze Signal zwischen 0,07 und 0,31, und das Netz muesste
+     jeden Unterschied aus einem Viertel des Wertebereichs lesen.
+     Drei Grundtempi als Vollausschlag: p50 ~ 0,33, in der Messung nie
+     gesaettigt. */
+  out[k++] = Math.min(s.speed / (RULES.SPEED * 3), 1);
+
+  /* Der Bremsvorrat, 0…1 — BRAKE_MAX. RULES.BRAKE ist die
+     Verzoegerung in m/s2 und hat hier nichts zu suchen. */
+  out[k++] = s.brake / RULES.BRAKE_MAX;
 
   const near = nearestOther(view);
   if (near) {
@@ -346,7 +385,7 @@ export function shapes(n = PATCH_N) {
      SIEG    Der Preis fürs Gewinnen.
 
    ANSCHAUEN STATT RATEN: welcher Term eine Marotte auslöst, sieht man
-   in arena.html in drei Sekunden — im Terminal nie.
+   in index.html?replay in drei Sekunden — im Terminal nie.
    ========================================================================= */
 export const REWARD = {
   RAUM:  0.6,
@@ -356,27 +395,90 @@ export const REWARD = {
   ZEIT:  0.002,
   KILL:  1.0,
   TOD:  -1.0,
-  SIEG:  1.0,
+  SIEG: 10.0,
 };
 
-/* Vor dem Schritt aufnehmen … */
-export function rewardSnapshot(view) {
+/* WARUM SIEG SO VIEL GRÖSSER IST ALS DER REST
+   =========================================================================
+   Mit SIEG 1,0 war diese Formel über den Ausgang einer Runde praktisch
+   uninformiert. Gemessen an 24 Matches mit den vier Bots (jeder Satz auf
+   DENSELBEN Matches abgerechnet, die Bots hängen ja nicht an der
+   Belohnung):
+
+     Hatte der Sieger die höchste Summe?      SIEG 1,0 →  7/24 = 29 %
+                                              SIEG 10  → 18/24 = 75 %
+     (Zufall wäre 25 %.)
+
+   Noch deutlicher an der Rangfolge. Sortiert man die vier Bots nach
+   mittlerem Lohn, ergab SIEG 1,0
+
+       cruiser > grinder > hunter > rookie
+
+   während die tatsächliche Siegreihenfolge
+
+       hunter (13 Siege) > cruiser (7) > grinder (2) > rookie (0)
+
+   ist. Die Belohnung setzte grinder mit 2 Siegen ÜBER hunter mit 13 —
+   ein Netz, das sie maximiert, lernt zu grinden, nicht zu gewinnen. Mit
+   SIEG 10 stimmen Lohn- und Siegreihenfolge überein.
+
+   Der Grund ist ein Grössenvergleich, den man leicht übersieht: LEBEN
+   minus ZEIT ist ein NETTO-Plus von 0,002 pro Agenten-Schritt, bei
+   31,25 Hz also 0,0625 pro Sekunde. Eine Runde von 60 s trägt damit
+   rund 3,8 ein — bei SIEG 1,0 war Herumfahren fast viermal so viel wert
+   wie Gewinnen. LEBEN und ZEIT sollen gegeneinander ziehen, aber sie
+   sind kein Ziel, sondern Anschub für ein frisches Netz.
+
+   NOCH OFFEN, bewusst nicht geändert: TEMPO auf 0,025 zu halbieren hebt
+   die Trefferquote auf 21/24 = 88 %. Das ist aber kein Fehler mehr,
+   sondern eine Entscheidung — TEMPO ist der Term, der das Grinden
+   beibringt, und das ist der Kern des Spiels. Wer ihn halbiert, bekommt
+   ein braveres Netz.
+
+   UND EINE GRENZE: gemessen ist das gegen vier handgeschriebene Bots.
+   Dass die Belohnung deren Können richtig ordnet, heisst nicht, dass ein
+   Netz sie nicht doch aushebelt. Darum gibt es index.html?replay.
+   ========================================================================= */
+
+/* Vor dem Schritt aufnehmen …
+
+   `mitRaum` kann das teuerste Stück abschalten: der RAUM-Term rastert
+   4 × 24 × 24 Zellen, und das kostet mehr als die halbe Rechenzeit
+   (gemessen: 35,7 µs je Agentenschritt mit, 13,7 µs ohne — die Physik
+   selbst braucht 5,6). Beim Verstärkungslernen wird diese Funktion
+   millionenfach gerufen, da lohnt sich die Wahl. Wer sie abschaltet,
+   MUSS auch RAUM auf 0 setzen, sonst rechnet reward() mit room = 0 und
+   die Differenz ist Unsinn. */
+export function rewardSnapshot(view, mitRaum = true) {
   return {
-    room: localRoom(encodePatch(view)),
+    room: mitRaum ? localRoom(encodePatch(view)) : 0,
     rubberUsedTotal: RULES.RUBBER - view.self.rubber,
     alive: view.self.alive !== false,
     others: view.others.filter((o) => o.alive).length,
-    kills: view.self.kills || 0,
+    /* Kein kills mehr: viewOfGame() legt das Feld gar nicht an, der Wert
+       war immer 0 — und gelesen hat ihn nie jemand. Abschüsse kommen aus
+       events.deaths. */
   };
 }
 
 /* … und danach abrechnen. `events` ist der Rückgabewert von step(). */
 export function reward(before, viewAfter, events = null, cycle = null,
                        weights = REWARD) {
-  const after = rewardSnapshot(viewAfter);
+  /* Kostet RAUM nichts, muss auch nichts dafür gerechnet werden. */
+  const after = rewardSnapshot(viewAfter, weights.RAUM !== 0);
 
   const died = before.alive && !after.alive;
-  const won = after.alive && before.others > 0 && after.others === 0;
+
+  /* GEWONNEN — die Engine fragen, nicht zählen, wer noch lebt.
+     "alle anderen sind tot" stimmt nur beim Ausscheiden. Entscheidet die
+     Win-Zone, leben noch alle; in lts und fortress gewinnt eine SEITE und
+     die Mitspieler leben auch. In beiden Fällen fiel der Siegbonus
+     lautlos aus — ein Netz hätte fürs Gewinnen nie etwas bekommen.
+     events.survivors ist genau die Menge, die finish() als Sieger
+     eingetragen hat, in allen vier Modi. */
+  const won = events && events.finished
+    ? !!cycle && events.survivors.includes(cycle)
+    : after.alive && before.others > 0 && after.others === 0;
 
   let kills = 0;
   if (events) {

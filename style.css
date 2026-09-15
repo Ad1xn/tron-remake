@@ -1,106 +1,36 @@
 /* =========================================================================
-   Optik der Seite um das Spielfeld herum.
-   Vorbild ist ein Arcade-Automat: dunkler Raum, runde Kacheln,
-   fette Zahlen, alles leuchtet ein bisschen.
+   Optik der Seite um die Arena herum.
+   =========================================================================
+   Vorbild ist das Original: fast alles ist schwarz und Arena, das Cockpit
+   ist ein schmaler Streifen unten. Blockige Schrift, rote
+   Beschriftungen, cyan-farbene Zahlen. Keine Kacheln, keine Kopfzeile —
+   die hatte ich erfunden.
    ========================================================================= */
 
 :root {
-  --bg:        #04060f;
-  --ink:       #dce6ff;
-  --muted:     #7f93c9;
-  --gold:      #ffd447;
-  --neon:      #2440ff;
-  --chip-bg:   rgba(10, 18, 48, 0.82);
-  --chip-line: rgba(76, 120, 255, 0.55);
+  --bg:     #000;
+  --ink:    #cfe3ff;
+  --cap:    #ff3333;     /* die Beschriftungsfarbe aus classic.aacockpit.xml */
+  --dim:    #55688f;
+  --cyan:   #11ffff;     /* Score, wenn man nicht führt   (0x11ffff) */
+  --green:  #11ff11;     /* Score, wenn man führt         (0x11ff11) */
+  --orange: #ff9d50;     /* Score bei Gleichstand         (0xff9d50) */
 }
 
 * { box-sizing: border-box; }
-
-html, body {
-  height: 100%;
-  margin: 0;
-}
+html, body { height: 100%; margin: 0; }
 
 body {
   display: flex;
   flex-direction: column;
-  background:
-    radial-gradient(120% 80% at 50% 0%, #0b1330 0%, transparent 60%),
-    var(--bg);
+  background: var(--bg);
   color: var(--ink);
-  font-family: Nunito, "Trebuchet MS", system-ui, sans-serif;
-  font-weight: 800;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-weight: 700;
   overflow: hidden;
 }
 
-
-/* ---------------- Kopfzeile ---------------- */
-.hudbar {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 20px 6px;
-}
-
-.chip {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  min-width: 96px;
-  padding: 7px 16px 9px;
-  border: 2px solid var(--chip-line);
-  border-radius: 16px;
-  background: var(--chip-bg);
-  box-shadow: 0 0 18px rgba(36, 64, 255, 0.35),
-              inset 0 0 12px rgba(36, 64, 255, 0.18);
-}
-
-.chip .label {
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.18em;
-  color: var(--muted);
-}
-
-.chip .value {
-  font-size: 26px;
-  font-weight: 900;
-  line-height: 1;
-  letter-spacing: 0.02em;
-  text-shadow: 0 0 14px currentColor;
-}
-
-.chip .value.gold { color: var(--gold); }
-
-.middle {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-/* Die Punkte-Reihe unter dem Level: einer pro Fahrer. */
-.dots { display: flex; gap: 7px; }
-
-.dots .dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--c);
-  box-shadow: 0 0 10px var(--c);
-  transition: opacity 0.25s, transform 0.25s;
-}
-
-.dots .dot.dead {
-  opacity: 0.22;
-  transform: scale(0.7);
-  box-shadow: none;
-}
-
-
-/* ---------------- Spielfeld ---------------- */
+/* ---------------- Die Arena ---------------- */
 .stage {
   position: relative;
   flex: 1;
@@ -113,196 +43,219 @@ body {
   height: 100%;
 }
 
-/* Sanft dunkle Ecken — lässt das Neon in der Mitte kräftiger wirken. */
-.stage::after {
-  content: "";
+/* ---------------- Namen über den Bikes ---------------- */
+.labels {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(70% 60% at 50% 45%, transparent 55%, rgba(2, 4, 12, 0.85) 100%);
+  overflow: hidden;
 }
 
+.tag {
+  position: absolute;
+  top: 0; left: 0;
+  display: none;
+  white-space: nowrap;
+  font-size: 0.66rem;
+  line-height: 1.2;
+  text-align: center;
+  color: var(--c);
+  text-shadow: 0 0 6px var(--c), 0 1px 2px #000;
+}
 
-/* ---------------- Overlay ---------------- */
+.tag .nm { display: block; font-style: normal; }
+.tag .rb { display: block; font-style: normal; color: #cfe3ff; opacity: 0.85; }
+.tag .rb.low { color: #ff3355; }
+
+/* ---------------- Overlay über der Arena ---------------- */
 .overlay {
   position: absolute;
   inset: 0;
-  z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 0.7rem;
   text-align: center;
-  background: radial-gradient(50% 40% at 50% 50%, rgba(4, 7, 20, 0.88), rgba(4, 7, 20, 0.5));
-  transition: opacity 0.2s;
+  background: radial-gradient(60% 50% at 50% 50%, rgba(0, 0, 0, 0.82), rgba(0, 0, 0, 0.5));
+  padding: 1.5rem;
 }
 
-.overlay.hidden {
-  opacity: 0;
-  pointer-events: none;
-}
+.overlay.hidden { display: none; }
 
 .overlay .title {
   margin: 0;
-  font-size: clamp(30px, 6vw, 62px);
-  font-weight: 900;
-  letter-spacing: 0.14em;
-  color: #7fe9ff;
-  text-shadow: 0 0 26px rgba(60, 200, 255, 0.85);
+  font-size: clamp(1.8rem, 6vw, 3.4rem);
+  letter-spacing: 0.22em;
+  color: #fff;
+  text-shadow: 0 0 24px #2440ff, 0 0 60px #2440ff;
 }
 
-.overlay .text {
-  margin: 0;
-  font-size: 16px;
-  color: var(--ink);
-}
+.overlay .text  { margin: 0; max-width: 44rem; font-weight: 400; line-height: 1.6; color: var(--ink); }
+.overlay .hint  { margin: 0; color: var(--cap); letter-spacing: 0.12em; font-size: 0.8rem; }
 
-.overlay .hint {
-  margin: 6px 0 0;
-  padding: 7px 16px;
-  border: 2px solid var(--chip-line);
-  border-radius: 999px;
-  background: var(--chip-bg);
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.16em;
-  color: var(--gold);
-}
-
-
-/* ---------------- Fusszeile ---------------- */
-footer {
-  display: flex;
-  flex-wrap: wrap;
+/* ---------------- Das Cockpit ---------------- */
+.cockpit {
+  display: grid;
+  grid-template-columns: 12rem 1fr 16rem;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px 24px;
-  padding: 8px 22px 14px;
+  gap: 1rem;
+  padding: 0.5rem 1rem 0.2rem;
+  font-size: 0.72rem;
 }
 
-.roster {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.scores { display: flex; flex-direction: column; line-height: 1.5; }
+.scores .cap { color: var(--cap); }
+.scores .pair { color: var(--dim); }
+.scores b { color: var(--cyan); font-size: 0.95rem; }
+.scores b.up  { color: var(--green); }
+.scores b.tie { color: var(--orange); }
+
+/* Drei Anzeigen in einer Reihe: Rubber – Speed – Brakes, so wie die
+   Positionen -0.48 / 0 / +0.48 in der Originaldatei. */
+.gauges {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.4rem;
 }
 
-.rider {
-  display: inline-flex;
+.gauge {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto auto;
   align-items: center;
-  gap: 7px;
-  padding: 5px 12px;
-  border: 1.5px solid color-mix(in srgb, var(--c) 55%, transparent);
-  border-radius: 999px;
-  background: rgba(8, 14, 36, 0.75);
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  color: var(--c);
-  transition: opacity 0.3s;
+  gap: 0.3rem 0.4rem;
 }
 
-.rider .pip {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--c);
-  box-shadow: 0 0 9px var(--c);
+.gauge .lim { font-style: normal; color: var(--dim); font-size: 0.62rem; }
+.gauge .cap {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--cap);
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
 }
+.gauge .cap b { color: var(--ink); }
 
-.rider em {
-  font-size: 10px;
-  font-style: normal;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  color: var(--muted);
-  text-transform: uppercase;
-}
-
-.rider.dead { opacity: 0.4; }
-.rider.dead .pip { box-shadow: none; }
-
-.keys {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-}
-
-.keys b {
-  color: var(--ink);
-  font-weight: 900;
-}
-
-
-/* =========================================================================
-   MESSER — Rubber, Speed, Brakes
-   =========================================================================
-   Vorbild ist die Leiste unten im Original: drei Werte, die man im
-   Augenwinkel liest, während man fährt. Darum breit, flach und ohne
-   Schnörkel — und Rubber zuerst, weil daran das Leben hängt.
-   ========================================================================= */
-.meters {
-  display: flex;
-  gap: 14px;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 14px 2px;
-  flex-wrap: wrap;
-}
-
-.meter {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-width: 190px;
-}
-
-.meter .name {
-  font-size: 0.66rem;
-  letter-spacing: 0.14em;
-  color: var(--muted);
-  min-width: 62px;
-}
-
-.meter .track {
+.gauge .track {
   position: relative;
-  flex: 1;
-  height: 9px;
-  border-radius: 99px;
-  background: rgba(10, 18, 48, 0.9);
-  border: 1px solid var(--chip-line);
+  height: 7px;
+  border: 1px solid #23345f;
+  background: #05070f;
   overflow: hidden;
 }
 
-.meter .fill {
+.gauge .fill {
   position: absolute;
   inset: 0 auto 0 0;
-  border-radius: 99px;
+  width: 0;
   background: var(--c, #4c78ff);
-  box-shadow: 0 0 12px var(--c, #4c78ff);
+  box-shadow: 0 0 8px var(--c, #4c78ff);
   transition: width 60ms linear;
 }
 
-.meter .num {
-  font-size: 0.82rem;
-  min-width: 42px;
-  text-align: right;
-  color: var(--ink);
-}
-
-/* Rubber: läuft von blau nach rot, und flackert, wenn es knapp wird. */
-#rubber-bar { --c: #22d3ee; }
-#rubber-bar.low {
-  --c: #ff2d55;
-  animation: pulse 0.42s steps(2, end) infinite;
-}
-@keyframes pulse { 50% { opacity: 0.45; } }
-
-#speed-bar { --c: #ffd447; }
+#rubber-bar { --c: #11ffff; }
+#rubber-bar.low { --c: #ff3355; animation: pulse 0.4s steps(2, end) infinite; }
+#speed-bar  { --c: #ffd447; }
 #speed-bar.fast { --c: #ff8a3d; }
+#brake-bar  { --c: #a855f7; }
+#brake-bar.using { --c: #ff9d50; }
+@keyframes pulse { 50% { opacity: 0.4; } }
 
-#brake-bar { --c: #a855f7; }
-#brake-bar.using { --c: #fb923c; }
+.info { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.5; color: var(--dim); }
+.info b { color: var(--ink); font-weight: 700; }
+.info .mode { color: var(--cap); letter-spacing: 0.08em; }
+
+/* ---------------- Tastenzeile ---------------- */
+.keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1rem;
+  justify-content: center;
+  padding: 0.2rem 1rem 0.6rem;
+  font-size: 0.62rem;
+  color: #3d4d70;
+}
+.keys b { color: var(--dim); font-weight: 700; }
+
+/* ---------------- Wiedergabe (index.html?replay) ----------------
+   Dieselbe Farbtafel wie das Cockpit darüber, damit die Leiste nicht
+   wie ein Fremdkörper wirkt: rote Beschriftungen, cyan Zahlen, sonst
+   schwarz. Sichtbar wird sie nur, wenn playback.js das hidden entfernt. */
+/* WICHTIG: eine eigene display-Regel schlägt die eingebaute Regel des
+   Browsers für [hidden] — ohne diese Zeile stünde die Leiste auch im
+   Spiel unter dem Cockpit, obwohl das Attribut gesetzt ist. */
+.replaybar[hidden] { display: none; }
+
+.replaybar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.3rem 1rem 0;
+  font-size: 0.7rem;
+}
+
+.replaybar .row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.replaybar button,
+.replaybar select,
+.replaybar input[type="range"] {
+  font: inherit;
+  font-weight: 700;
+  color: var(--ink);
+  background: #05070f;
+  border: 1px solid #16233f;
+  border-radius: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+}
+.replaybar button { min-width: 2.1rem; }
+.replaybar button:hover { border-color: var(--cap); color: #fff; }
+.replaybar select { max-width: min(40rem, 80vw); }
+.replaybar input[type="range"] { padding: 0; cursor: grab; width: 7rem; }
+.replaybar #rp-scrub { width: min(26rem, 45vw); }
+.replaybar .sep { width: 1px; height: 1.1rem; background: #16233f; margin: 0 0.2rem; }
+.replaybar .dim { color: var(--cap); letter-spacing: 0.08em; }
+.replaybar b { color: var(--cyan); font-weight: 700; }
+.replaybar label { display: flex; gap: 0.3rem; align-items: center; cursor: pointer; color: var(--cap); }
+.replaybar .meta { margin: 0; text-align: center; color: var(--dim); font-weight: 400; }
+.replaybar .meta b { color: var(--ink); }
+
+/* Eine Tastenzeile fürs Spielen, eine fürs Zusehen — playback.js setzt
+   die Klasse am body. */
+.keys.replay { display: none; }
+body.replaying .keys.play { display: none; }
+body.replaying .keys.replay { display: flex; }
+
+@media (max-width: 900px) {
+  .cockpit { grid-template-columns: 1fr; gap: 0.4rem; }
+  .info { align-items: flex-start; }
+  .gauges { gap: 0.8rem; }
+}
+
+
+/* ---------------- Die grosse Tempo-Zahl ----------------
+   Im Video steht sie gross und mittig unten am Bildrand — sie ist der
+   Wert der Tempo-Anzeige, nur eben in Lesegrösse. */
+.bigspeed {
+  position: absolute;
+  left: 50%;
+  bottom: 0.2rem;
+  transform: translateX(-50%);
+  font-size: 1.7rem;
+  letter-spacing: 0.06em;
+  color: #dfe9ff;
+  text-shadow: 0 0 12px rgba(120, 170, 255, 0.5);
+  pointer-events: none;
+}
+
+/* Verweis auf die KI-Werkbank in der Tastenzeile — ohne ihn findet man
+   die zweite Seite nur, wenn man die Adresse kennt. */
+.keys a { color: var(--cap); text-decoration: none; }
+.keys a:hover { color: #fff; text-decoration: underline; }

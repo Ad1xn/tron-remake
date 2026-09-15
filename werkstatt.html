@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TRON — Werkbank</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="werkstatt.css">
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body class="werkbank">
+
+  <!-- ========== Steuerung ========== -->
+  <header class="leiste">
+    <button id="start" class="haupt">▶ TRAINIEREN</button>
+    <button id="schritt">Generation ▶|</button>
+    <button id="zuruck">↻ Von vorn</button>
+
+    <span class="trenner"></span>
+    <label>Population <input type="number" id="groesse" value="24" min="6" max="64" step="2"></label>
+    <label>Matches/Gen <input type="number" id="matches" value="36" min="8" max="200" step="4"></label>
+    <label>Elite <input type="number" id="elite" value="6" min="1" max="20"></label>
+    <label>Mutation <input type="number" id="mutation" value="0.08" min="0.005" max="0.5" step="0.005"></label>
+
+    <span class="trenner"></span>
+    <label class="schalter"><input type="checkbox" id="zusehen" checked> Schaukampf zeigen</label>
+
+    <span class="trenner"></span>
+    <button id="sichern" title="Das beste Netz sichern — danach in index.html?netz=werkbank zu sehen">★ Bestes sichern</button>
+    <button id="laden" title="Ein gesichertes Netz als Stammvater einer neuen Population">Netz laden</button>
+    <input type="file" id="datei" accept=".json" hidden>
+    <b id="sicher-info"></b>
+  </header>
+
+  <!-- ========== Kennzahlen ========== -->
+  <div class="zahlen">
+    <div class="zahl"><span class="k">GENERATION</span><b id="z-gen">0</b></div>
+    <div class="zahl"><span class="k">MATCH</span><b id="z-match">0 / 36</b></div>
+    <div class="zahl"><span class="k">BESTE FITNESS</span><b id="z-beste">–</b></div>
+    <div class="zahl"><span class="k">SCHNITT</span><b id="z-schnitt">–</b></div>
+    <div class="zahl"><span class="k">MUTATION</span><b id="z-mut">–</b></div>
+    <div class="zahl"><span class="k">MATCHES GESAMT</span><b id="z-total">0</b></div>
+    <div class="zahl"><span class="k">MATCHES/s</span><b id="z-tempo">–</b></div>
+  </div>
+
+  <main class="raster">
+    <!-- Arena -->
+    <section class="feld">
+      <h2>
+        <button id="tab-schau" class="reiter an">SCHAUKAMPF</button>
+        <button id="tab-schwarm" class="reiter">SCHWARM</button>
+        <i id="schaukampf-info">–</i>
+        <button id="schwarm-messen" class="klein" hidden>fahren</button>
+      </h2>
+      <canvas id="board"></canvas>
+      <div id="labels" class="labels"></div>
+      <canvas id="schwarm" hidden></canvas>
+    </section>
+
+    <!-- Netz + Kurve -->
+    <aside class="seite">
+      <section class="kasten">
+        <h2>DAS NETZ <i id="netz-info">–</i></h2>
+        <canvas id="netzbild"></canvas>
+      </section>
+
+      <section class="kasten">
+        <h2>FORTSCHRITT <i>beste · mittlere Fitness · gegen den Urahn</i></h2>
+        <canvas id="kurve"></canvas>
+      </section>
+    </aside>
+  </main>
+
+  <!-- Ahnengalerie -->
+  <section class="population">
+    <h2>AHNENGALERIE
+      <i>die Spitze gegen ihre eingefrorenen Vorfahren — hier muss der Fortschritt stehen</i>
+      <button id="galerie-messen" class="klein">messen</button>
+    </h2>
+    <div id="galerie" class="ahnen">
+      <span class="hinweis">Noch nicht gemessen. Kostet ein paar hundert Matches und bremst
+        das Training, darum nur auf Zuruf.</span>
+    </div>
+  </section>
+
+  <!-- Population -->
+  <section class="population">
+    <h2>POPULATION <i id="pop-info">nach Fitness sortiert — grün ist besser</i></h2>
+    <div id="pop" class="kacheln"></div>
+  </section>
+
+  <div class="fuss">
+    <span><b>Keine handgeschriebenen Gegner.</b> Die Netze fahren ausschliesslich gegeneinander.</span>
+    <span>Messlatte ist der <b>Urahn</b> — der Beste der Generation 0, für immer eingefroren.</span>
+    <span><a href="index.html">Spiel</a> · <a href="index.html?replay">Aufnahmen</a>
+      · <a href="index.html?netz=werkbank">gesichertes Netz ansehen</a></span>
+  </div>
+
+  <script type="module" src="src/werkstatt.js"></script>
+</body>
+</html>
