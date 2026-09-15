@@ -54,9 +54,15 @@
   <main class="raster">
     <!-- Arena -->
     <section class="feld">
-      <h2>SCHAUKAMPF <i id="schaukampf-info">–</i></h2>
+      <h2>
+        <button id="tab-schau" class="reiter an">SCHAUKAMPF</button>
+        <button id="tab-schwarm" class="reiter">SCHWARM</button>
+        <i id="schaukampf-info">–</i>
+        <button id="schwarm-messen" class="klein" hidden>fahren</button>
+      </h2>
       <canvas id="board"></canvas>
       <div id="labels" class="labels"></div>
+      <canvas id="schwarm" hidden></canvas>
     </section>
 
     <!-- Netz + Kurve -->

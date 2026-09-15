@@ -47,6 +47,8 @@ let laeuft = false;
 let schau = null;
 let gewaehlt = 0;
 let schauAcc = 0;
+let reiter = "schau";             // "schau" | "schwarm"
+let schwarmDaten = null;
 let letzte = performance.now();
 let tempoFenster = [];
 
@@ -65,6 +67,7 @@ worker.onmessage = (e) => {
   zustand.matchesGesamt = m.matchesGesamt;
 
   if (m.typ === "galerie") { zeichneGalerie(m.zeilen); return; }
+  if (m.typ === "schwarm") { schwarmDaten = m; zeichneSchwarm(); return; }
 
   if (m.typ === "aufgesetzt" || m.typ === "generation") {
     zustand.population = m.population;
@@ -127,7 +130,7 @@ function schleife(jetzt) {
   const dt = Math.min(jetzt - letzte, 100);
   letzte = jetzt;
 
-  if (schau && el("zusehen").checked) {
+  if (schau && el("zusehen").checked && reiter === "schau") {
     schauAcc += dt;
     let schritte = 0;
     while (schauAcc >= RULES.TICK_MS && schritte < 8
@@ -140,7 +143,7 @@ function schleife(jetzt) {
     if (schau.game.phase !== "running") neuerSchaukampf();
   }
 
-  view.render(dt);
+  if (reiter === "schau") view.render(dt);
 
   /* Das Netzbild zeigt das GEWÄHLTE Netz, gefüttert mit den Sensoren
      des Bikes, dem die Kamera folgt. Sind beide dasselbe Netz, sieht
@@ -372,7 +375,116 @@ function zeichneGalerie(zeilen) {
     </div>`).join("");
 }
 
-window.addEventListener("resize", () => { view.resize(); zeichneKurve(); });
+/* ------------------------------------------------------------------
+   DER SCHWARM — viele Matches übereinandergelegt
+   ------------------------------------------------------------------
+   Das Bild aus Trackmania, für ein Spiel übersetzt, in dem es so nicht
+   geht: dort fahren die Geister ein Zeitfahren und berühren einander
+   nie, hier verändert jede Wand die Welt für alle anderen. Fünfhundert
+   Netze in EINE Arena zu setzen wäre ein Match mit fünfhundert
+   Spielern, kein Blick auf fünfhundert Versuche.
+
+   Also: getrennt fahren, gemeinsam zeichnen. Was man sieht, ist die
+   VERTEILUNG des Verhaltens — wohin diese Population fährt, wo sie
+   endet, und ob sie überhaupt etwas anderes tut als immer dasselbe.
+
+   Eingefärbt wie das Vorbild: grün hat gewonnen, gelb hielt lange
+   durch, rot starb früh. Und eine eigene Draufsicht ist es obendrein —
+   die drei Kameras im Spiel folgen immer nur einem Bike.
+   ------------------------------------------------------------------ */
+const schwarmCanvas = el("schwarm");
+const sctx = schwarmCanvas.getContext("2d");
+
+function zeichneSchwarm() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = schwarmCanvas.clientWidth, h = schwarmCanvas.clientHeight;
+  if (!w || !h) return;
+  if (schwarmCanvas.width !== w * dpr || schwarmCanvas.height !== h * dpr) {
+    schwarmCanvas.width = w * dpr; schwarmCanvas.height = h * dpr;
+  }
+  sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  sctx.fillStyle = "#04060c";
+  sctx.fillRect(0, 0, w, h);
+
+  if (!schwarmDaten) {
+    sctx.fillStyle = "#3d4d70";
+    sctx.font = "11px ui-monospace, monospace";
+    sctx.fillText("„fahren\" drücken — dann fahren die Netze der aktuellen", 14, 24);
+    sctx.fillText("Generation viele Matches getrennt, und alle Linien", 14, 40);
+    sctx.fillText("werden übereinandergelegt.", 14, 56);
+    return;
+  }
+
+  const A = schwarmDaten.arena || 500;
+  const rand = 10;
+  const k = Math.min(w - rand * 2, h - rand * 2) / A;
+  const ox = (w - A * k) / 2, oy = (h - A * k) / 2;
+  const PX = (x) => ox + x * k, PY = (y) => oy + y * k;
+
+  /* Die Arena als dünner Rahmen — sonst schwebt der Schwarm im Nichts. */
+  sctx.strokeStyle = "#16233f";
+  sctx.lineWidth = 1;
+  sctx.strokeRect(PX(0), PY(0), A * k, A * k);
+
+  const maxZeit = Math.max(...schwarmDaten.bahnen.map((b) => b.zeit), 1);
+  sctx.lineWidth = 1;
+  sctx.lineJoin = "round";
+
+  for (const b of schwarmDaten.bahnen) {
+    const p = b.punkte;
+    if (p.length < 4) continue;
+    const t = Math.min(b.zeit / maxZeit, 1);
+    /* grün = gewonnen, sonst gelb→rot nach Lebensdauer */
+    sctx.strokeStyle = b.gewonnen
+      ? "rgba(125,255,160,0.55)"
+      : `hsla(${55 * t} 90% 55% / ${0.10 + 0.22 * t})`;
+    sctx.beginPath();
+    sctx.moveTo(PX(p[0]), PY(p[1]));
+    for (let i = 2; i < p.length; i += 2) sctx.lineTo(PX(p[i]), PY(p[i + 1]));
+    sctx.stroke();
+
+    /* Das Ende markieren: dort steckt die eigentliche Information. */
+    const ex = PX(p[p.length - 2]), ey = PY(p[p.length - 1]);
+    sctx.fillStyle = b.gewonnen ? "rgba(125,255,160,0.9)" : "rgba(255,80,90,0.45)";
+    sctx.fillRect(ex - 1.5, ey - 1.5, 3, 3);
+  }
+
+  sctx.fillStyle = "#4d5f85";
+  sctx.font = "10px ui-monospace, monospace";
+  sctx.fillText(schwarmDaten.matches + " Matches · " + schwarmDaten.bahnen.length
+    + " Bahnen · Generation " + schwarmDaten.generation, 12, h - 24);
+  sctx.fillStyle = "#7dffa0"; sctx.fillText("gewonnen", 12, h - 10);
+  sctx.fillStyle = "#e8d44a"; sctx.fillText("lange durchgehalten", 78, h - 10);
+  sctx.fillStyle = "#ff5a5a"; sctx.fillText("früh gestorben", 200, h - 10);
+}
+
+function setzeReiter(welcher) {
+  reiter = welcher;
+  el("tab-schau").classList.toggle("an", welcher === "schau");
+  el("tab-schwarm").classList.toggle("an", welcher === "schwarm");
+  el("board").hidden = welcher !== "schau";
+  el("labels").hidden = welcher !== "schau";
+  schwarmCanvas.hidden = welcher !== "schwarm";
+  el("schwarm-messen").hidden = welcher !== "schwarm";
+  if (welcher === "schau") { view.resize(); }
+  else zeichneSchwarm();
+}
+
+el("tab-schau").onclick = () => setzeReiter("schau");
+el("tab-schwarm").onclick = () => setzeReiter("schwarm");
+el("schwarm-messen").onclick = () => {
+  schwarmDaten = null;
+  zeichneSchwarm();
+  sctx.fillStyle = "#7dffa0";
+  sctx.font = "11px ui-monospace, monospace";
+  sctx.fillText("fährt …", 14, 24);
+  worker.postMessage({ typ: "schwarm", matches: 40 });
+};
+
+window.addEventListener("resize", () => {
+  view.resize(); zeichneKurve();
+  if (reiter === "schwarm") zeichneSchwarm();
+});
 
 aufsetzen();
 requestAnimationFrame(schleife);

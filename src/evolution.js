@@ -88,6 +88,44 @@ export function schaukampfSpiel(netze, seed, variante = null, namen = null) {
   return createGame({ riders, seed, arena, mode: "lms" });
 }
 
+/* Wie kampf(), schreibt aber die gefahrene Linie jedes Bikes mit.
+
+   Dafür da: viele Matches getrennt rechnen und danach NUR die Spuren
+   übereinanderlegen. Das ergibt das Bild, das man aus Trackmania kennt —
+   nur ist es dort ein Zeitfahren, wo die Geister einander nie berühren.
+   Bei uns verändert jede Wand die Welt für alle anderen, deshalb wäre
+   es Unsinn, 500 Netze in EINE Arena zu setzen: das wäre ein Match mit
+   500 Spielern, kein Blick auf 500 Versuche. Getrennt fahren, gemeinsam
+   zeichnen ist der einzige ehrliche Weg.
+
+   `jederNte` dünnt aus: bei 125 Schritten je Sekunde braucht niemand
+   jeden Punkt, und die Datenmenge geht sonst durch die Decke. */
+export function kampfMitSpur(netze, seed, maxTicks = STANDARD.maxTicks,
+                             variante = null, jederNte = 8) {
+  const game = schaukampfSpiel(netze, seed, variante);
+  const spuren = game.cycles.map(() => []);
+
+  while (game.phase === "running" && game.tick < maxTicks) {
+    if (game.tick % jederNte === 0) {
+      game.cycles.forEach((c, i) => {
+        if (!c.alive) return;
+        spuren[i].push(Math.round(c.x), Math.round(c.y));
+      });
+    }
+    step(game, collectActions(game));
+  }
+
+  const sieger = game.winner ? game.cycles.indexOf(game.winner) : -1;
+  return {
+    sieger, dauer: game.time, arena: game.arena,
+    bahnen: game.cycles.map((c, i) => ({
+      punkte: spuren[i],
+      gewonnen: game.winner === c,
+      zeit: c.alive ? game.time : c.deathTime,
+    })),
+  };
+}
+
 export function kampf(netze, seed, maxTicks = STANDARD.maxTicks, variante = null) {
   const game = schaukampfSpiel(netze, seed, variante);
   while (game.phase === "running" && game.tick < maxTicks) {

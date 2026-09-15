@@ -17,7 +17,7 @@
    importmap, und die gilt im Worker nicht. Alles hier ist reine Logik.
    ========================================================================= */
 
-import { erzeugeEvolution, kampf } from "./evolution.js";
+import { erzeugeEvolution, kampf, kampfMitSpur } from "./evolution.js";
 import { netzAlsJson, ladeNetz } from "./net.js";
 
 let evo = null;
@@ -159,6 +159,32 @@ onmessage = (e) => {
     zeilen.sort((a, b) => a.generation - b.generation);
     postMessage({ typ: "galerie", zeilen, generation: evo.generation,
                   matchNr: evo.matchNr, matchesGesamt });
+    return;
+  }
+
+  /* DER SCHWARM — viele Matches getrennt fahren und nur die Linien
+     zurückschicken. Die aktuelle Population fährt, so wie sie ist. */
+  if (m.typ === "schwarm") {
+    if (!evo) return;
+    const wieViele = m.matches || 40;
+    const bahnen = [];
+    let arena = 0;
+    for (let k = 0; k < wieViele; k++) {
+      /* Zufällige Besetzung aus der Population, gestreute Startplätze —
+         dasselbe Ziehen wie im Training, damit das Bild auch zeigt, was
+         dort passiert. */
+      const frei = evo.population.map((_, i) => i);
+      const wer = [];
+      for (let j = 0; j < evo.optionen.proMatch && frei.length; j++) {
+        wer.push(frei.splice(Math.floor(Math.random() * frei.length), 1)[0]);
+      }
+      const erg = kampfMitSpur(wer.map((i) => evo.population[i].netz),
+                               300000 + k, evo.optionen.maxTicks, k);
+      arena = erg.arena;
+      for (const b of erg.bahnen) bahnen.push(b);
+    }
+    postMessage({ typ: "schwarm", bahnen, arena, matches: wieViele,
+                  generation: evo.generation, matchNr: evo.matchNr, matchesGesamt });
     return;
   }
 
